@@ -1,0 +1,112 @@
+{
+  "entities": {
+    "User": {
+      "title": "User",
+      "description": "User profile with role and basic info.",
+      "type": "object",
+      "properties": {
+        "uid": { "type": "string" },
+        "email": { "type": "string" },
+        "role": { "type": "string", "enum": ["instructor", "student"] },
+        "displayName": { "type": "string" }
+      },
+      "required": ["uid", "email", "role"]
+    },
+    "Session": {
+      "title": "Session",
+      "description": "A simulation session created by an instructor.",
+      "type": "object",
+      "properties": {
+        "id": { "type": "string" },
+        "instructorId": { "type": "string" },
+        "name": { "type": "string" },
+        "joinCode": { "type": "string" },
+        "currentRound": { "type": "integer" },
+        "status": { "type": "string", "enum": ["waiting", "active", "completed"] },
+        "createdAt": { "type": "string", "format": "date-time" },
+        "isLocked": { "type": "boolean" }
+      },
+      "required": ["id", "instructorId", "name", "joinCode", "currentRound", "status"]
+    },
+    "Team": {
+      "title": "Team",
+      "description": "A student team participating in a session.",
+      "type": "object",
+      "properties": {
+        "id": { "type": "string" },
+        "sessionId": { "type": "string" },
+        "name": { "type": "string" },
+        "members": { "type": "array", "items": { "type": "string" } },
+        "createdAt": { "type": "string", "format": "date-time" }
+      },
+      "required": ["id", "sessionId", "name"]
+    },
+    "Decision": {
+      "title": "Decision",
+      "description": "A team's decisions for a specific round.",
+      "type": "object",
+      "properties": {
+        "id": { "type": "string" },
+        "teamId": { "type": "string" },
+        "sessionId": { "type": "string" },
+        "round": { "type": "integer" },
+        "segmentAllocation": {
+          "type": "object",
+          "properties": {
+            "residential": { "type": "number" },
+            "commercial": { "type": "number" },
+            "government": { "type": "number" }
+          }
+        },
+        "positioning": { "type": "string" },
+        "productStrategy": { "type": "string" },
+        "pricing": { "type": "number" },
+        "distributionChannel": {
+          "type": "object",
+          "properties": {
+            "influencers": { "type": "number" },
+            "dealers": { "type": "number" },
+            "direct": { "type": "number" }
+          }
+        },
+        "promotionAllocation": {
+          "type": "object",
+          "properties": {
+            "events": { "type": "number" },
+            "socialMedia": { "type": "number" },
+            "tradeMagazines": { "type": "number" },
+            "influencerEvents": { "type": "number" }
+          }
+        },
+        "overallStrategy": { "type": "string" },
+        "submittedAt": { "type": "string", "format": "date-time" }
+      },
+      "required": ["teamId", "sessionId", "round"]
+    },
+    "Result": {
+      "title": "Result",
+      "description": "Simulation results for a team in a specific round.",
+      "type": "object",
+      "properties": {
+        "id": { "type": "string" },
+        "teamId": { "type": "string" },
+        "sessionId": { "type": "string" },
+        "round": { "type": "integer" },
+        "volume": { "type": "number" },
+        "revenue": { "type": "number" },
+        "profit": { "type": "number" },
+        "marketShare": { "type": "number" },
+        "customerSatisfaction": { "type": "number" },
+        "rank": { "type": "integer" }
+      },
+      "required": ["teamId", "sessionId", "round"]
+    }
+  },
+  "firestore": {
+    "/users/{uid}": { "schema": "User", "description": "User profiles." },
+    "/sessions/{sessionId}": { "schema": "Session", "description": "Simulation sessions." },
+    "/teams/{teamId}": { "schema": "Team", "description": "Teams in a session." },
+    "/decisions/{decisionId}": { "schema": "Decision", "description": "Team decisions." },
+    "/results/{resultId}": { "schema": "Result", "description": "Round results." }
+  }
+}

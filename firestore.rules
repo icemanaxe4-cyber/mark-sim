@@ -1,0 +1,114 @@
+// ===============================================================
+// Assumed Data Model
+// ===============================================================
+//
+// Collection: users
+// Fields:
+//   - uid: string (required)
+//   - email: string (required)
+//   - role: string (required, 'instructor' | 'student')
+//   - displayName: string
+//
+// Collection: sessions
+// Fields:
+//   - instructorId: string (required)
+//   - name: string (required)
+//   - joinCode: string (required)
+//   - currentRound: number (required)
+//   - status: string (required, 'waiting' | 'active' | 'completed')
+//   - createdAt: timestamp
+//   - isLocked: bool
+//
+// Collection: sessions/{sessionId}/teams
+// Fields:
+//   - sessionId: string (required)
+//   - name: string (required)
+//   - members: list (required)
+//   - createdAt: timestamp
+//
+// Collection: sessions/{sessionId}/decisions
+// Fields:
+//   - teamId: string (required)
+//   - sessionId: string (required)
+//   - round: number (required)
+//   - segmentAllocation: map
+//   - positioning: string
+//   - productStrategy: string
+//   - pricing: number
+//   - distributionChannel: map
+//   - promotionAllocation: map
+//   - overallStrategy: string
+//   - submittedAt: timestamp
+//
+// Collection: sessions/{sessionId}/results
+// Fields:
+//   - teamId: string (required)
+//   - sessionId: string (required)
+//   - round: number (required)
+//   - volume: number
+//   - revenue: number
+//   - profit: number
+//   - marketShare: number
+//   - customerSatisfaction: number
+//   - rank: number
+//
+// ===============================================================
+
+rules_version = '2';
+service cloud.firestore {
+  match /databases/{database}/documents {
+
+    // Helper Functions
+    function isAuthenticated() {
+      return request.auth != null;
+    }
+
+    function isOwner(userId) {
+      return isAuthenticated() && request.auth.uid == userId;
+    }
+
+    function isAdmin() {
+      return isAuthenticated() && 
+        (get(/databases/$(database)/documents/users/$(request.auth.uid)).data.role == 'admin' ||
+         (request.auth.token.email == "harshit.k.singh11@gmail.com" && request.auth.token.email_verified == true));
+    }
+
+    function isInstructor() {
+      return isAuthenticated() && get(/databases/$(database)/documents/users/$(request.auth.uid)).data.role == 'instructor';
+    }
+
+    // User Rules
+    match /users/{uid} {
+      allow read: if isAuthenticated();
+      allow create, update: if isOwner(uid);
+    }
+
+    // Session Rules
+    match /sessions/{sessionId} {
+      allow read: if isAuthenticated();
+      allow create: if isInstructor();
+      allow update, delete: if isInstructor() && resource.data.instructorId == request.auth.uid;
+    }
+
+    // Team Rules
+    match /teams/{teamId} {
+      allow read: if isAuthenticated();
+      allow create: if isAuthenticated();
+      allow update: if isAuthenticated();
+      allow delete: if isInstructor();
+    }
+
+    // Decision Rules
+    match /decisions/{decisionId} {
+      allow read: if isAuthenticated();
+      allow create: if isAuthenticated();
+      allow update, delete: if isInstructor();
+    }
+
+    // Result Rules
+    match /results/{resultId} {
+      allow read: if isAuthenticated();
+      allow create, update, delete: if isInstructor();
+    }
+  }
+}
