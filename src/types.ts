@@ -86,6 +86,14 @@ export interface Result {
   strengths: string[];
   weaknesses: string[];
   explanation: string;
+  // P&L Components
+  variableCosts: number;
+  contributionMargin: number;
+  fixedCosts: number;
+  salesForceCosts: number;
+  promotionCosts: number;
+  unitPrice: number;
+  unitCost: number;
 }
 
 export const INDUSTRY_CONTEXT = {
@@ -105,5 +113,6 @@ export const INDUSTRY_CONTEXT = {
     'Large Highly Trained Force'
   ],
   pricingRange: { min: 300, max: 1000 },
-  promotionBudget: 5000000, // 50 Lakhs
+  promotionBudget: 5000000, // Initial default
+  maxPromotionBudget: 8000000, 
 };

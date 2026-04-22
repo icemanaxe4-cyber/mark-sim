@@ -72,7 +72,7 @@ export function calculateRoundResults(
         fixedCosts = 2000000;
         break;
       case 'Large':
-        capacity = 275000;
+        capacity = 175000;
         fixedCosts = 3500000;
         break;
     }
@@ -185,24 +185,41 @@ export function calculateRoundResults(
 
     // E. Promotion Effectiveness (Awareness vs Conversion)
     const prom = decision.promotionAllocation || { events: 0, socialMedia: 0, tradeMagazines: 0, influencerEvents: 0 };
-    const totalProm = (prom.events || 0) + (prom.socialMedia || 0) + (prom.tradeMagazines || 0) + (prom.influencerEvents || 0);
+    const totalPromRaw = (prom.events || 0) + (prom.socialMedia || 0) + (prom.tradeMagazines || 0) + (prom.influencerEvents || 0);
     
+    // Hard Budget Cap Enforcement
+    const effectiveProm = Math.min(totalPromRaw, INDUSTRY_CONTEXT.maxPromotionBudget);
+    const promotionCapped = totalPromRaw > INDUSTRY_CONTEXT.maxPromotionBudget;
+    if (promotionCapped) {
+      weaknesses.push(`Promotion spend exceeded hard limit of ₹${(INDUSTRY_CONTEXT.maxPromotionBudget / 100000).toFixed(0)}L`);
+    }
+
     let finalPromEffect = 0.15; // Minimum 15% effectiveness
-    const cappedProm = Math.min(totalProm, 5000000);
+    const diminishingReturnThreshold = 5000000;
+    const cappedProm = Math.min(effectiveProm, diminishingReturnThreshold);
     const promReach = Math.min(1.2, Math.pow(cappedProm, 0.45) / 300); 
 
-    if (totalProm > 0) {
+    if (effectiveProm > 0) {
       const awareness = (prom.socialMedia || 0) * 0.6 + (prom.tradeMagazines || 0) * 0.8;
       const conversion = (prom.influencerEvents || 0) * 1.6 + (prom.events || 0) * 1.3;
-      const calculatedPromEffect = ((awareness * 0.4 + conversion * 0.6) / cappedProm) * promReach;
+      // Note: we use totalPromRaw for the ratio to penalize over-spending even if it's capped in effect
+      const calculatedPromEffect = ((awareness * 0.4 + conversion * 0.6) / Math.max(1, cappedProm)) * promReach;
       finalPromEffect = Math.max(0.15, calculatedPromEffect);
       
-      if (totalProm > 5000000) {
+      if (effectiveProm > diminishingReturnThreshold) {
         finalPromEffect *= 0.7; // inefficiency penalty
-        weaknesses.push('Promotion budget over-spent (diminishing returns)');
+        weaknesses.push('Promotion budget facing diminishing returns (> 50L)');
       }
 
-      const crowdingFactor = 1 - Math.min(0.2, totalIndustryProm / (teams.length * 7000000));
+      const currentRoundTotalProm = decisions
+        .filter(d => d.round === round)
+        .reduce((sum, d) => {
+          const p = d.promotionAllocation;
+          const raw = (p.events || 0) + (p.socialMedia || 0) + (p.tradeMagazines || 0) + (p.influencerEvents || 0);
+          return sum + Math.min(raw, INDUSTRY_CONTEXT.maxPromotionBudget);
+        }, 0);
+
+      const crowdingFactor = 1 - Math.min(0.2, currentRoundTotalProm / (teams.length * 7000000));
       finalPromEffect *= crowdingFactor;
     }
 
@@ -384,7 +401,7 @@ export function calculateRoundResults(
       score: Math.max(0.001, finalScore),
       pricing: price,
       sourcing: decision.sourcing || 'Domestic',
-      totalProm,
+      totalProm: effectiveProm,
       costMultiplier: costMultiplier * sourcingCostMult,
       satisfactionBonus,
       focusMultiplier,
@@ -426,7 +443,14 @@ export function calculateRoundResults(
         salesForceEfficiency: t.salesForceEfficiency,
         strengths: t.strengths,
         weaknesses: t.weaknesses,
-        explanation: t.explanation
+        explanation: t.explanation,
+        variableCosts: 0,
+        contributionMargin: 0,
+        fixedCosts: t.fixedCosts,
+        salesForceCosts: t.salesForceCost,
+        promotionCosts: t.totalProm,
+        unitPrice: t.pricing,
+        unitCost: 0
       });
       return;
     }
@@ -496,7 +520,14 @@ export function calculateRoundResults(
       salesForceEfficiency: t.salesForceEfficiency,
       strengths: t.strengths,
       weaknesses: t.weaknesses,
-      explanation: t.explanation
+      explanation: t.explanation,
+      variableCosts: Math.round(volume * unitCost),
+      contributionMargin: Math.round(revenue - (volume * unitCost)),
+      fixedCosts: Math.round(t.fixedCosts),
+      salesForceCosts: Math.round(t.salesForceCost),
+      promotionCosts: Math.round(t.totalProm),
+      unitPrice: t.pricing,
+      unitCost: parseFloat(unitCost.toFixed(2))
     });
   });
 

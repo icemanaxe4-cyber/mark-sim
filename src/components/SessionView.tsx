@@ -353,7 +353,7 @@ function DecisionForm({ session, team, decisions }: { session: Session, team: Te
     e.preventDefault();
 
     // Validation for segment allocation total
-    const segTotal = Object.values(formData.segmentAllocation!).reduce((a, b) => (a as number) + (b as number), 0);
+    const segTotal = Object.values(formData.segmentAllocation!).reduce<number>((a, b) => a + (b as number), 0);
     if (segTotal !== 100) {
       alert(`Segment allocation must total 100%. Current total: ${segTotal}%`);
       return;
@@ -361,9 +361,16 @@ function DecisionForm({ session, team, decisions }: { session: Session, team: Te
 
     // Validation for distribution channel total
     if (session.currentRound >= 2) {
-      const distTotal = Object.values(formData.distributionChannel!).reduce((a, b) => (a as number) + (b as number), 0);
+      const distTotal = Object.values(formData.distributionChannel!).reduce<number>((a, b) => a + (b as number), 0);
       if (distTotal !== 100) {
         alert(`Distribution channel allocation must total 100%. Current total: ${distTotal}%`);
+        return;
+      }
+
+      // Validation for promotion budget
+      const promTotal = Object.values(formData.promotionAllocation!).reduce<number>((a, b) => a + (b as number), 0);
+      if (promTotal > INDUSTRY_CONTEXT.maxPromotionBudget) {
+        alert(`Promotion budget cannot exceed ₹${(INDUSTRY_CONTEXT.maxPromotionBudget / 100000).toFixed(0)}L. Current total: ₹${(promTotal / 100000).toFixed(1)}L`);
         return;
       }
     }
@@ -487,9 +494,9 @@ function DecisionForm({ session, team, decisions }: { session: Session, team: Te
                   onChange={(e) => setFormData({ ...formData, productionCapacityChoice: e.target.value as 'Small' | 'Medium' | 'Large' })}
                   className="w-full rounded-lg border border-slate-200 px-3 py-2"
                 >
-                  <option value="Small">Small (50k - 100k units)</option>
-                  <option value="Medium">Medium (100k - 200k units)</option>
-                  <option value="Large">Large (200k - 350k units)</option>
+                  <option value="Small">Small (75,000 units)</option>
+                  <option value="Medium">Medium (150,000 units)</option>
+                  <option value="Large">Large (175,000 units)</option>
                 </select>
               </div>
               <div>
@@ -548,7 +555,20 @@ function DecisionForm({ session, team, decisions }: { session: Session, team: Te
             </div>
 
             <div className="space-y-4">
-              <h4 className="font-semibold text-slate-800">Promotion Allocation (₹)</h4>
+              <div className="flex items-center justify-between">
+                <h4 className="font-semibold text-slate-800">Promotion Allocation (₹)</h4>
+                <div className="flex items-center gap-2">
+                  <span className="text-xs text-slate-500">Max: ₹{(INDUSTRY_CONTEXT.maxPromotionBudget / 100000).toFixed(0)}L</span>
+                  <span className={cn(
+                    "text-sm font-bold px-2 py-1 rounded-lg transition-colors",
+                    Object.values(formData.promotionAllocation!).reduce<number>((a, b) => a + (b as number), 0) <= INDUSTRY_CONTEXT.maxPromotionBudget
+                      ? "bg-blue-100 text-blue-700" 
+                      : "bg-red-100 text-red-700"
+                  )}>
+                    Total: ₹{(Object.values(formData.promotionAllocation!).reduce<number>((a, b) => a + (b as number), 0) / 100000).toFixed(1)}L
+                  </span>
+                </div>
+              </div>
               <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
                 {Object.keys(formData.promotionAllocation!).map((prom) => (
                   <div key={prom}>
@@ -765,6 +785,9 @@ function TeamResults({ team, results, round, decisions, isAnalysisPhase }: { tea
         </p>
       </div>
 
+      {/* P&L Statement */}
+      <PLStatement result={displayResult} decision={myDecisions.find(d => d.round === displayResult.round)} />
+
       {/* Charts */}
       <div className="bg-white rounded-2xl p-6 shadow-sm border border-slate-200">
         <h4 className="font-bold text-slate-900 mb-6">Performance Trends</h4>
@@ -839,6 +862,157 @@ function TeamResults({ team, results, round, decisions, isAnalysisPhase }: { tea
           </motion.div>
         )}
       </AnimatePresence>
+    </div>
+  );
+}
+
+function PLStatement({ result, decision }: { result: Result, decision?: Decision }) {
+  const { 
+    revenue, 
+    variableCosts, 
+    contributionMargin, 
+    fixedCosts, 
+    salesForceCosts, 
+    promotionCosts, 
+    profit,
+    unitPrice,
+    unitCost,
+    volume
+  } = result;
+
+  return (
+    <div className="bg-white rounded-2xl p-6 shadow-sm border border-slate-200">
+      <div className="flex items-center justify-between mb-6">
+        <h4 className="font-bold text-slate-900 flex items-center gap-2">
+          <DollarSign className="h-5 w-5 text-green-600" />
+          Profit & Loss Statement
+        </h4>
+        <div className="text-[10px] bg-slate-100 px-2 py-1 rounded font-bold text-slate-500 uppercase">
+          Round {result.round} Summary
+        </div>
+      </div>
+
+      <div className="grid grid-cols-1 md:grid-cols-3 gap-6 mb-8 border-b border-slate-100 pb-6">
+        <div className="space-y-1">
+          <p className="text-[10px] font-bold text-slate-400 uppercase">Unit Economics</p>
+          <div className="flex justify-between items-center text-sm">
+            <span className="text-slate-600">Avg. Selling Price</span>
+            <span className="font-bold">₹{unitPrice}</span>
+          </div>
+          <div className="flex justify-between items-center text-sm">
+            <span className="text-slate-600">Unit Variable Cost</span>
+            <span className="font-bold text-red-500">₹{unitCost}</span>
+          </div>
+          <div className="flex justify-between items-center text-sm border-t border-slate-50 pt-1">
+            <span className="text-slate-900 font-semibold">Margin per Unit</span>
+            <span className="font-bold text-green-600">₹{(unitPrice - unitCost).toFixed(2)}</span>
+          </div>
+        </div>
+        <div className="space-y-1">
+          <p className="text-[10px] font-bold text-slate-400 uppercase">Production</p>
+          <div className="flex justify-between items-center text-sm">
+            <span className="text-slate-600">Volume Sold</span>
+            <span className="font-bold">{volume.toLocaleString()} units</span>
+          </div>
+          <div className="flex justify-between items-center text-sm">
+            <span className="text-slate-600">Capacity Utilization</span>
+            <span className="font-bold">{result.capacityUtilization}%</span>
+          </div>
+        </div>
+        <div className="space-y-1">
+          <p className="text-[10px] font-bold text-slate-400 uppercase">Efficiency</p>
+          <div className="flex justify-between items-center text-sm">
+            <span className="text-slate-600">Contribution Margin</span>
+            <span className="font-bold text-green-600">{revenue > 0 ? ((contributionMargin / revenue) * 100).toFixed(1) : 0}%</span>
+          </div>
+          <div className="flex justify-between items-center text-sm">
+            <span className="text-slate-600">Net Profit Margin</span>
+            <span className="font-bold text-indigo-600">{revenue > 0 ? ((profit / revenue) * 100).toFixed(1) : 0}%</span>
+          </div>
+        </div>
+      </div>
+
+      <div className="space-y-4">
+        {/* Revenue Section */}
+        <div className="flex justify-between items-center text-base font-bold text-slate-900">
+          <span>Gross Sales Revenue</span>
+          <span>₹{revenue.toLocaleString()}</span>
+        </div>
+
+        {/* Variable costs */}
+        <div className="space-y-2">
+          <div className="flex justify-between items-center text-sm text-red-600 font-medium">
+            <span className="flex items-center gap-2">
+              <span className="w-1.5 h-1.5 rounded-full bg-red-400"></span>
+              Variable Costs of Production
+            </span>
+            <span>- ₹{variableCosts.toLocaleString()}</span>
+          </div>
+          <div className="pl-6 text-[11px] text-slate-500 space-y-1 italic">
+             <p>• Materials, Direct Labor & Energy</p>
+             <p>• Inventory Handling & Logistics</p>
+          </div>
+        </div>
+
+        {/* Contribution */}
+        <div className="flex justify-between items-center py-2 bg-slate-50 px-3 rounded-lg text-sm font-bold border border-slate-100">
+          <span className="text-slate-700 uppercase tracking-wider text-xs">Total Contribution</span>
+          <span className={contributionMargin >= 0 ? "text-green-600" : "text-red-600"}>
+            ₹{contributionMargin.toLocaleString()}
+          </span>
+        </div>
+
+        {/* Fixed costs items */}
+        <div className="space-y-3 pt-2">
+          <div className="flex justify-between items-center text-sm text-slate-600 font-medium">
+            <span className="flex items-center gap-2">
+              <span className="w-1.5 h-1.5 rounded-full bg-slate-300"></span>
+              Fixed Operational Overheads
+            </span>
+            <span>- ₹{fixedCosts.toLocaleString()}</span>
+          </div>
+          
+          <div className="flex justify-between items-center text-sm text-slate-600 font-medium">
+            <span className="flex items-center gap-2">
+              <span className="w-1.5 h-1.5 rounded-full bg-slate-300"></span>
+              Sales Force Expenditure
+            </span>
+            <span>- ₹{salesForceCosts.toLocaleString()}</span>
+          </div>
+          
+          <div className="space-y-1">
+            <div className="flex justify-between items-center text-sm text-slate-600 font-medium">
+              <span className="flex items-center gap-2">
+                <span className="w-1.5 h-1.5 rounded-full bg-slate-300"></span>
+                Marketing & Promotion
+              </span>
+              <span>- ₹{promotionCosts.toLocaleString()}</span>
+            </div>
+            {decision && (
+              <div className="pl-6 grid grid-cols-2 gap-x-4 gap-y-1 text-[10px] text-slate-400 font-medium">
+                {decision.promotionAllocation.events > 0 && <div>Events: ₹{decision.promotionAllocation.events.toLocaleString()}</div>}
+                {decision.promotionAllocation.socialMedia > 0 && <div>Social: ₹{decision.promotionAllocation.socialMedia.toLocaleString()}</div>}
+                {decision.promotionAllocation.tradeMagazines > 0 && <div>Trade: ₹{decision.promotionAllocation.tradeMagazines.toLocaleString()}</div>}
+                {decision.promotionAllocation.influencerEvents > 0 && <div>Influencers: ₹{decision.promotionAllocation.influencerEvents.toLocaleString()}</div>}
+              </div>
+            )}
+          </div>
+        </div>
+
+        {/* Bottom Line */}
+        <div className="mt-6 p-5 bg-slate-900 rounded-2xl flex flex-col gap-1 items-center shadow-lg border border-slate-800">
+          <span className="text-white/50 font-bold uppercase tracking-widest text-[10px]">Net Operating Profit/Loss</span>
+          <span className={cn("text-3xl font-black font-mono tracking-tighter", profit >= 0 ? "text-green-400" : "text-red-400")}>
+            {profit < 0 && "-"} ₹{Math.abs(profit).toLocaleString()}
+          </span>
+          <div className="h-1 w-full bg-slate-800 rounded-full mt-2 overflow-hidden">
+             <div 
+               className={cn("h-full", profit >= 0 ? "bg-green-500" : "bg-red-500")}
+               style={{ width: `${Math.min(100, (Math.abs(profit) / Math.max(1, revenue)) * 100)}%` }}
+             />
+          </div>
+        </div>
+      </div>
     </div>
   );
 }
