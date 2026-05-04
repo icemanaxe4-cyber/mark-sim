@@ -35,7 +35,7 @@ export default function Login() {
         await setDoc(doc(db, 'users', user.uid), profile);
         await signOut(auth);
         alert('Sign up successful! Please sign in.');
-        window.location.reload();
+        setIsLogin(true);
       }
     } catch (err: any) {
       setError(err.message);
@@ -62,7 +62,7 @@ export default function Login() {
         await setDoc(doc(db, 'users', user.uid), profile);
         await signOut(auth);
         alert('Sign up successful! Please sign in.');
-        window.location.reload();
+        setIsLogin(true);
       }
     } catch (err: any) {
       setError(err.message);
