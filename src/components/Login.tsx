@@ -1,5 +1,5 @@
 import React, { useState } from 'react';
-import { signInWithEmailAndPassword, createUserWithEmailAndPassword, signInWithPopup, GoogleAuthProvider } from 'firebase/auth';
+import { signInWithEmailAndPassword, createUserWithEmailAndPassword, signInWithPopup, GoogleAuthProvider, signOut } from 'firebase/auth';
 import { doc, setDoc, getDoc } from 'firebase/firestore';
 import { auth, db } from '../firebase';
 import { UserRole, UserProfile } from '../types';
@@ -33,6 +33,9 @@ export default function Login() {
           displayName,
         };
         await setDoc(doc(db, 'users', user.uid), profile);
+        await signOut(auth);
+        alert('Sign up successful! Please sign in.');
+        window.location.reload();
       }
     } catch (err: any) {
       setError(err.message);
@@ -57,6 +60,9 @@ export default function Login() {
           displayName: user.displayName || '',
         };
         await setDoc(doc(db, 'users', user.uid), profile);
+        await signOut(auth);
+        alert('Sign up successful! Please sign in.');
+        window.location.reload();
       }
     } catch (err: any) {
       setError(err.message);

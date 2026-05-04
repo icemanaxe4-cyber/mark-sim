@@ -137,7 +137,7 @@ export default function SessionView({ user }: { user: UserProfile }) {
 
   const isInstructor = user.role === 'instructor';
   const currentRoundDecisions = decisions.filter(d => d.round === session.currentRound);
-  const hasSubmitted = myTeam ? currentRoundDecisions.some(d => d.teamId === myTeam.id) : false;
+  const hasSubmitted = myTeam ? currentRoundDecisions.some(d => d.teamId === myTeam.id && d.submittedAt) : false;
 
   return (
     <div className="min-h-screen bg-slate-50 pb-12">
@@ -340,6 +340,11 @@ function DecisionForm({ session, team, decisions }: { session: Session, team: Te
   });
   const [draftId, setDraftId] = useState<string | null>(null);
 
+  const segTotal = Object.values(formData.segmentAllocation || {}).reduce<number>((a, b) => a + (b as number), 0);
+  const distTotal = Object.values(formData.distributionChannel || {}).reduce<number>((a, b) => a + (b as number), 0);
+  const promTotal = Object.values(formData.promotionAllocation || {}).reduce<number>((a, b) => a + (b as number), 0);
+  const sfTotal = (formData.salesForceCount || 0) * (formData.salesForceSalary || 0);
+
   // Load existing draft or previous round data
   useEffect(() => {
     const draft = decisions.find(d => d.teamId === team.id && d.round === session.currentRound && !d.submittedAt);
@@ -422,24 +427,31 @@ function DecisionForm({ session, team, decisions }: { session: Session, team: Te
     e.preventDefault();
 
     // Validation for segment allocation total
-    const segTotal = Object.values(formData.segmentAllocation!).reduce<number>((a, b) => a + (b as number), 0);
-    if (segTotal !== 100) {
-      alert(`Segment allocation must total 100%. Current total: ${segTotal}%`);
-      return;
+    if (session.currentRound >= 1) {
+      if (segTotal !== 100) {
+        alert(`Segment allocation must total 100%. Current total: ${segTotal}%`);
+        return;
+      }
     }
 
-    // Validation for distribution channel total
-    const promTotal = Object.values(formData.promotionAllocation!).reduce<number>((a, b) => a + (b as number), 0);
-    if (promTotal > INDUSTRY_CONTEXT.maxPromotionBudget) {
-      alert(`Promotion budget cannot exceed ₹${(INDUSTRY_CONTEXT.maxPromotionBudget / 100000).toFixed(0)}L. Current total: ₹${(promTotal / 100000).toFixed(1)}L`);
-      return;
-    }
+    if (session.currentRound >= 2) {
+      // Validation for distribution channel total
+      if (distTotal !== 100) {
+        alert(`Distribution channel allocation must total 100%. Current total: ${distTotal}%`);
+        return;
+      }
 
-    // Salesforce budget validation
-    const sfTotal = (formData.salesForceCount || 0) * (formData.salesForceSalary || 0);
-    if (sfTotal > 8000000) {
-      alert(`Salesforce budget cannot exceed ₹80L. Current total: ₹${(sfTotal / 100000).toFixed(1)}L`);
-      return;
+      // Validation for promotion budget
+      if (promTotal > INDUSTRY_CONTEXT.maxPromotionBudget) {
+        alert(`Promotion budget cannot exceed ₹${(INDUSTRY_CONTEXT.maxPromotionBudget / 100000).toFixed(0)}L. Current total: ₹${(promTotal / 100000).toFixed(1)}L`);
+        return;
+      }
+
+      // Salesforce budget validation
+      if (sfTotal > 8000000) {
+        alert(`Salesforce budget cannot exceed ₹80L. Current total: ₹${(sfTotal / 100000).toFixed(1)}L`);
+        return;
+      }
     }
 
     setLoading(true);
@@ -460,7 +472,7 @@ function DecisionForm({ session, team, decisions }: { session: Session, team: Te
       }
       alert("Decisions submitted successfully!");
     } catch (error) {
-      handleFirestoreError(error, OperationType.CREATE, 'decisions');
+      handleFirestoreError(error, draftId ? OperationType.UPDATE : OperationType.CREATE, 'decisions');
     } finally {
       setLoading(false);
     }
@@ -483,11 +495,11 @@ function DecisionForm({ session, team, decisions }: { session: Session, team: Te
                 </h4>
                 <span className={cn(
                   "text-sm font-bold px-2 py-1 rounded-lg",
-                  Object.values(formData.segmentAllocation!).reduce((a, b) => (a as number) + (b as number), 0) === 100 
+                  segTotal === 100 
                     ? "bg-green-100 text-green-700" 
                     : "bg-red-100 text-red-700"
                 )}>
-                  Total: {Object.values(formData.segmentAllocation!).reduce((a, b) => (a as number) + (b as number), 0)}%
+                  Total: {segTotal}%
                 </span>
               </div>
               <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
@@ -618,15 +630,15 @@ function DecisionForm({ session, team, decisions }: { session: Session, team: Te
               </div>
               <div className={cn(
                 "sm:col-span-2 p-3 rounded-xl border flex items-center justify-between",
-                (formData.salesForceCount! * formData.salesForceSalary!) > 8000000 ? "bg-red-50 border-red-200" : "bg-blue-50 border-blue-200"
+                sfTotal > 8000000 ? "bg-red-50 border-red-200" : "bg-blue-50 border-blue-200"
               )}>
                 <div className="flex items-center gap-2">
-                  <DollarSign className={cn("h-5 w-5", (formData.salesForceCount! * formData.salesForceSalary!) > 8000000 ? "text-red-500" : "text-blue-500")} />
+                  <DollarSign className={cn("h-5 w-5", sfTotal > 8000000 ? "text-red-500" : "text-blue-500")} />
                   <span className="text-sm font-bold text-slate-700">Total Salesforce Budget</span>
                 </div>
                 <div className="text-right">
-                  <span className={cn("text-xl font-bold", (formData.salesForceCount! * formData.salesForceSalary!) > 8000000 ? "text-red-600" : "text-blue-600")}>
-                    ₹{((formData.salesForceCount! * formData.salesForceSalary!) / 100000).toFixed(1)}L
+                  <span className={cn("text-xl font-bold", sfTotal > 8000000 ? "text-red-600" : "text-blue-600")}>
+                    ₹{(sfTotal / 100000).toFixed(1)}L
                   </span>
                   <p className="text-[10px] text-slate-400 font-bold uppercase">Budget Cap: ₹80L</p>
                 </div>
@@ -649,11 +661,11 @@ function DecisionForm({ session, team, decisions }: { session: Session, team: Te
                 <h4 className="font-semibold text-slate-800">Distribution Channel (%)</h4>
                 <span className={cn(
                   "text-sm font-bold px-2 py-1 rounded-lg",
-                  Object.values(formData.distributionChannel!).reduce((a, b) => (a as number) + (b as number), 0) === 100 
+                  distTotal === 100 
                     ? "bg-green-100 text-green-700" 
                     : "bg-red-100 text-red-700"
                 )}>
-                  Total: {Object.values(formData.distributionChannel!).reduce((a, b) => (a as number) + (b as number), 0)}%
+                  Total: {distTotal}%
                 </span>
               </div>
               <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
@@ -686,11 +698,11 @@ function DecisionForm({ session, team, decisions }: { session: Session, team: Te
                   <span className="text-xs text-slate-500">Max: ₹{(INDUSTRY_CONTEXT.maxPromotionBudget / 100000).toFixed(0)}L</span>
                   <span className={cn(
                     "text-sm font-bold px-2 py-1 rounded-lg transition-colors",
-                    Object.values(formData.promotionAllocation!).reduce<number>((a, b) => a + (b as number), 0) <= INDUSTRY_CONTEXT.maxPromotionBudget
+                    promTotal <= INDUSTRY_CONTEXT.maxPromotionBudget
                       ? "bg-blue-100 text-blue-700" 
                       : "bg-red-100 text-red-700"
                   )}>
-                    Total: ₹{(Object.values(formData.promotionAllocation!).reduce<number>((a, b) => a + (b as number), 0) / 100000).toFixed(0)}L
+                    Total: ₹{(promTotal / 100000).toFixed(0)}L
                   </span>
                 </div>
               </div>
@@ -773,7 +785,7 @@ function TeamResults({ team, teams, results, round, decisions, isAnalysisPhase, 
   const [showHistory, setShowHistory] = useState(false);
   const [showIndustryDecisions, setShowIndustryDecisions] = useState(false);
   const teamResults = results.filter(r => r.teamId === team.id).sort((a, b) => a.round - b.round);
-  const myDecisions = decisions.filter(d => d.teamId === team.id).sort((a, b) => a.round - b.round);
+  const myDecisions = decisions.filter(d => d.teamId === team.id && d.submittedAt).sort((a, b) => a.round - b.round);
   
   // If we are in analysis phase, show the current round's result. Otherwise show the previous round's result.
   const latestResult = isAnalysisPhase 
@@ -1171,7 +1183,7 @@ function TeamResults({ team, teams, results, round, decisions, isAnalysisPhase, 
                     .map(r => (
                       <React.Fragment key={`round-${r}`}>
                         {teams.map(t => {
-                          const dec = decisions.find(d => d.teamId === t.id && d.round === r);
+                          const dec = decisions.find(d => d.teamId === t.id && d.round === r && d.submittedAt);
                           if (!dec) return null;
                           return (
                             <tr key={dec.id} className={cn("text-xs", t.id === team.id ? "bg-blue-50/50" : "")}>
@@ -1513,7 +1525,7 @@ function InstructorControls({ session, teams, decisions, results }: { session: S
 
   const calculateResults = async () => {
     setLoading(true);
-    const currentRoundDecisions = decisions.filter(d => d.round === session.currentRound);
+    const currentRoundDecisions = decisions.filter(d => d.round === session.currentRound && d.submittedAt);
     const previousResults = results.filter(r => r.round === session.currentRound - 1);
     
     // Calculate results
@@ -1557,7 +1569,7 @@ function InstructorControls({ session, teams, decisions, results }: { session: S
     setLoading(false);
   };
 
-  const allSubmitted = teams.every(t => decisions.some(d => d.teamId === t.id && d.round === session.currentRound));
+  const allSubmitted = teams.every(t => decisions.some(d => d.teamId === t.id && d.round === session.currentRound && d.submittedAt));
 
   return (
     <div className="flex items-center gap-2">
@@ -1769,24 +1781,32 @@ function InstructorOverview({ session, teams, decisions, results }: { session: S
         {activeTab === 'progress' && (
           <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
             {teams.map(team => {
-              const decision = currentRoundDecisions.find(d => d.teamId === team.id);
+              const decision = currentRoundDecisions.find(d => d.teamId === team.id && d.submittedAt);
+              const draft = currentRoundDecisions.find(d => d.teamId === team.id && !d.submittedAt);
               const hasSubmitted = !!decision;
+              const hasDraft = !!draft;
               return (
                 <div 
                   key={team.id} 
                   className={cn(
                     "p-4 rounded-xl border flex items-center justify-between cursor-pointer transition-all",
-                    hasSubmitted ? "bg-green-50 border-green-200 hover:bg-green-100" : "bg-slate-50 border-slate-200 hover:bg-slate-100",
+                    hasSubmitted ? "bg-green-50 border-green-200 hover:bg-green-100" : 
+                    hasDraft ? "bg-amber-50 border-amber-200 hover:bg-amber-100" :
+                    "bg-slate-50 border-slate-200 hover:bg-slate-100",
                     selectedTeamId === team.id && "ring-2 ring-blue-500"
                   )}
                   onClick={() => setSelectedTeamId(team.id)}
                 >
-                  <span className="font-medium text-slate-700">{team.name}</span>
-                  {hasSubmitted ? (
-                    <span className="text-xs font-bold text-green-600 uppercase">Submitted</span>
-                  ) : (
-                    <span className="text-xs font-bold text-slate-400 uppercase">Pending</span>
-                  )}
+                  <div>
+                    <p className="font-bold text-slate-700 text-sm">{team.name}</p>
+                    <p className="text-[10px] text-slate-500 uppercase font-bold">
+                      {hasSubmitted ? 'Submitted' : hasDraft ? 'Draft Saved' : 'Waiting'}
+                    </p>
+                  </div>
+                  <div className={cn(
+                    "w-2 h-2 rounded-full",
+                    hasSubmitted ? "bg-green-500" : hasDraft ? "bg-amber-500" : "bg-slate-300"
+                  )} />
                 </div>
               );
             })}
