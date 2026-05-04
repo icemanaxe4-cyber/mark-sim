@@ -13,6 +13,7 @@ export default function InstructorDashboard({ user }: { user: UserProfile }) {
   const [sessions, setSessions] = useState<Session[]>([]);
   const [loading, setLoading] = useState(true);
   const [newSessionName, setNewSessionName] = useState('');
+  const [totalMarketSize, setTotalMarketSize] = useState(6000000);
   const [isCreating, setIsCreating] = useState(false);
   const [isDeleting, setIsDeleting] = useState<string | null>(null);
   const [sessionToDelete, setSessionToDelete] = useState<Session | null>(null);
@@ -47,8 +48,10 @@ export default function InstructorDashboard({ user }: { user: UserProfile }) {
         isAnalysisPhase: false,
         createdAt: serverTimestamp(),
         isLocked: false,
+        totalMarketSize,
       });
       setNewSessionName('');
+      setTotalMarketSize(6000000);
     } catch (error) {
       console.error('Error creating session:', error);
     } finally {
@@ -144,6 +147,19 @@ export default function InstructorDashboard({ user }: { user: UserProfile }) {
                     placeholder="e.g., Marketing Fall 2024"
                     className="w-full rounded-lg border border-slate-200 px-4 py-2 focus:border-blue-500 focus:outline-none focus:ring-1 focus:ring-blue-500"
                   />
+                </div>
+                <div>
+                  <label className="block text-sm font-medium text-slate-700 mb-1">Total Market Size (Units)</label>
+                  <input
+                    type="number"
+                    required
+                    min="100000"
+                    step="100000"
+                    value={totalMarketSize}
+                    onChange={(e) => setTotalMarketSize(parseInt(e.target.value) || 6000000)}
+                    className="w-full rounded-lg border border-slate-200 px-4 py-2 focus:border-blue-500 focus:outline-none focus:ring-1 focus:ring-blue-500"
+                  />
+                  <p className="text-[10px] text-slate-500 mt-1 italic">Default: 6,000,000 units (60 lakh). This scales all volume calculations.</p>
                 </div>
                 <button
                   type="submit"

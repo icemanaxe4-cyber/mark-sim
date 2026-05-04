@@ -3,7 +3,7 @@ import { useParams, useNavigate } from 'react-router-dom';
 import { doc, onSnapshot, collection, query, where, addDoc, serverTimestamp, updateDoc, getDocs, writeBatch } from 'firebase/firestore';
 import { db, auth, handleFirestoreError, OperationType } from '../firebase';
 import { Session, UserProfile, Team, Decision, Result, INDUSTRY_CONTEXT } from '../types';
-import { Loader2, ChevronLeft, Lock, Unlock, Play, BarChart3, Users, AlertCircle, Info, TrendingUp, DollarSign, PieChart, Award, Trophy, ChevronRight } from 'lucide-react';
+import { Loader2, ChevronLeft, Lock, Unlock, Play, BarChart3, Users, AlertCircle, Info, TrendingUp, DollarSign, PieChart, Award, Trophy, ChevronRight, Clock } from 'lucide-react';
 import { cn } from '../lib/utils';
 import { motion, AnimatePresence } from 'motion/react';
 import { calculateRoundResults } from '../services/simulationEngine';
@@ -153,7 +153,7 @@ export default function SessionView({ user }: { user: UserProfile }) {
             </button>
             <div>
               <h1 className="text-lg font-bold text-slate-900">{session.name}</h1>
-              <p className="text-xs text-slate-500">Round {session.currentRound} of 5 • {session.status}</p>
+              <p className="text-xs text-slate-500">Round {session.currentRound} of 6 • {session.status}</p>
             </div>
           </div>
           
@@ -193,7 +193,7 @@ export default function SessionView({ user }: { user: UserProfile }) {
           {/* Main Content Area */}
           <div className="lg:col-span-8 space-y-8">
             {session.currentRound === 1 && !isInstructor && !hasSubmitted && !session.isAnalysisPhase && (
-              <CompetitionBenchmark />
+              <CompetitionBenchmark totalMarketSize={session.totalMarketSize} />
             )}
 
             {!isInstructor && session.status === 'active' && !hasSubmitted && !session.isAnalysisPhase && (
@@ -209,7 +209,15 @@ export default function SessionView({ user }: { user: UserProfile }) {
             )}
 
             {(!isInstructor && (hasSubmitted || session.status === 'completed')) && (
-              <TeamResults team={myTeam!} results={results} round={session.currentRound} decisions={decisions} isAnalysisPhase={session.isAnalysisPhase} />
+              <TeamResults 
+                team={myTeam!} 
+                teams={teams}
+                results={results} 
+                round={session.currentRound} 
+                decisions={decisions} 
+                isAnalysisPhase={session.isAnalysisPhase}
+                sessionStatus={session.status}
+              />
             )}
 
             {isInstructor && (
@@ -234,7 +242,7 @@ export default function SessionView({ user }: { user: UserProfile }) {
                       <div className="p-3 bg-green-50 rounded-xl">
                         <p className="text-xs text-green-600 font-semibold uppercase">Volume</p>
                         <p className="text-xl font-bold text-green-900">
-                          {results.find(r => r.teamId === myTeam?.id && r.round === session.currentRound - 1)?.volume.toLocaleString()}m
+                          {results.find(r => r.teamId === myTeam?.id && r.round === session.currentRound - 1)?.volume.toLocaleString()} units
                         </p>
                       </div>
                       <div className="p-3 bg-indigo-50 rounded-xl">
@@ -285,7 +293,11 @@ function RoundInfoBanner({ round }: { round: number }) {
     },
     { 
       title: "Market Disruption", 
-      desc: "Health Alert: BIS declares 50% of CPVC pipes unhealthy. Major demand shift to Stainless Steel expected." 
+      desc: "Health Alert: BIS declares 50% of CPVC pipes unhealthy. Demand shift to SS expected. NOTE: High import duties on steel continue to keep imported goods prices high." 
+    },
+    { 
+      title: "New Competition", 
+      desc: "A new domestic entrant has launched with 1 Lakh (100,000 units) capacity, targeting the mass market. Overall SS penetration is now at peak (25%)." 
     },
   ];
 
@@ -321,33 +333,90 @@ function DecisionForm({ session, team, decisions }: { session: Session, team: Te
     promotionAllocation: { events: 0, socialMedia: 0, tradeMagazines: 0, influencerEvents: 0 },
     sourcing: 'Domestic',
     productionCapacityChoice: 'Medium',
-    salesForceStrategy: INDUSTRY_CONTEXT.salesForceOptions[1],
+    salesForceCount: 10,
+    salesForceSalary: 500000,
     overallStrategy: 'Premium positioning',
     assumptions: '',
   });
+  const [draftId, setDraftId] = useState<string | null>(null);
 
+  // Load existing draft or previous round data
   useEffect(() => {
-    // Find the most recent decision for this team
-    const latestDecision = decisions
-      .filter(d => d.teamId === team.id && d.round < session.currentRound)
-      .sort((a, b) => b.round - a.round)[0];
-
-    if (latestDecision) {
+    const draft = decisions.find(d => d.teamId === team.id && d.round === session.currentRound && !d.submittedAt);
+    
+    if (draft) {
+      setDraftId(draft.id!);
       setFormData({
-        segmentAllocation: latestDecision.segmentAllocation,
-        positioning: latestDecision.positioning,
-        productStrategy: latestDecision.productStrategy || INDUSTRY_CONTEXT.productStrategy[0],
-        pricing: latestDecision.pricing || 500,
-        distributionChannel: latestDecision.distributionChannel || { influencers: 40, dealers: 40, direct: 20 },
-        promotionAllocation: latestDecision.promotionAllocation || { events: 0, socialMedia: 0, tradeMagazines: 0, influencerEvents: 0 },
-        sourcing: latestDecision.sourcing || 'Domestic',
-        productionCapacityChoice: latestDecision.productionCapacityChoice || 'Medium',
-        salesForceStrategy: latestDecision.salesForceStrategy || INDUSTRY_CONTEXT.salesForceOptions[1],
-        overallStrategy: latestDecision.overallStrategy || 'Premium positioning',
-        assumptions: latestDecision.assumptions || '',
+        segmentAllocation: draft.segmentAllocation,
+        positioning: draft.positioning,
+        productStrategy: draft.productStrategy,
+        pricing: draft.pricing,
+        distributionChannel: draft.distributionChannel,
+        promotionAllocation: draft.promotionAllocation,
+        sourcing: draft.sourcing,
+        productionCapacityChoice: draft.productionCapacityChoice,
+        salesForceCount: draft.salesForceCount || 10,
+        salesForceSalary: draft.salesForceSalary || 500000,
+        overallStrategy: draft.overallStrategy,
+        assumptions: draft.assumptions || '',
       });
+    } else {
+      // If no draft, load previous round data
+      const latestDecision = decisions
+        .filter(d => d.teamId === team.id && d.round < session.currentRound)
+        .sort((a, b) => b.round - a.round)[0];
+
+      if (latestDecision) {
+        setFormData({
+          segmentAllocation: latestDecision.segmentAllocation,
+          positioning: latestDecision.positioning,
+          productStrategy: latestDecision.productStrategy || INDUSTRY_CONTEXT.productStrategy[0],
+          pricing: latestDecision.pricing || 500,
+          distributionChannel: latestDecision.distributionChannel || { influencers: 40, dealers: 40, direct: 20 },
+          promotionAllocation: latestDecision.promotionAllocation || { events: 0, socialMedia: 0, tradeMagazines: 0, influencerEvents: 0 },
+          sourcing: latestDecision.sourcing || 'Domestic',
+          productionCapacityChoice: latestDecision.productionCapacityChoice || 'Medium',
+          salesForceCount: latestDecision.salesForceCount || 10,
+          salesForceSalary: latestDecision.salesForceSalary || 500000,
+          overallStrategy: latestDecision.overallStrategy || 'Premium positioning',
+          assumptions: latestDecision.assumptions || '',
+        });
+      }
     }
-  }, [session.currentRound, team.id, decisions]);
+  }, [session.currentRound, team.id]); // Load once per round or when draft found
+
+  // Auto-save logic
+  useEffect(() => {
+    const saveTimeout = setTimeout(async () => {
+      // Only auto-save if we are in active phase and haven't submitted yet
+      if (session.status !== 'active' || session.isAnalysisPhase) return;
+
+      try {
+        if (draftId) {
+          const docRef = doc(db, 'decisions', draftId);
+          await updateDoc(docRef, {
+            ...formData,
+            updatedAt: serverTimestamp()
+          });
+        } else {
+          // Create initial draft
+          const docRef = await addDoc(collection(db, 'decisions'), {
+            ...formData,
+            teamId: team.id,
+            sessionId: session.id,
+            round: session.currentRound,
+            submittedAt: null, // It's a draft
+            createdAt: serverTimestamp()
+          });
+          setDraftId(docRef.id);
+        }
+      } catch (error) {
+        console.error("Auto-save failed:", error);
+      }
+    }, 1500); // Debounce saves
+
+    return () => clearTimeout(saveTimeout);
+  }, [formData, session.id, team.id, session.currentRound]);
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -360,30 +429,36 @@ function DecisionForm({ session, team, decisions }: { session: Session, team: Te
     }
 
     // Validation for distribution channel total
-    if (session.currentRound >= 2) {
-      const distTotal = Object.values(formData.distributionChannel!).reduce<number>((a, b) => a + (b as number), 0);
-      if (distTotal !== 100) {
-        alert(`Distribution channel allocation must total 100%. Current total: ${distTotal}%`);
-        return;
-      }
+    const promTotal = Object.values(formData.promotionAllocation!).reduce<number>((a, b) => a + (b as number), 0);
+    if (promTotal > INDUSTRY_CONTEXT.maxPromotionBudget) {
+      alert(`Promotion budget cannot exceed ₹${(INDUSTRY_CONTEXT.maxPromotionBudget / 100000).toFixed(0)}L. Current total: ₹${(promTotal / 100000).toFixed(1)}L`);
+      return;
+    }
 
-      // Validation for promotion budget
-      const promTotal = Object.values(formData.promotionAllocation!).reduce<number>((a, b) => a + (b as number), 0);
-      if (promTotal > INDUSTRY_CONTEXT.maxPromotionBudget) {
-        alert(`Promotion budget cannot exceed ₹${(INDUSTRY_CONTEXT.maxPromotionBudget / 100000).toFixed(0)}L. Current total: ₹${(promTotal / 100000).toFixed(1)}L`);
-        return;
-      }
+    // Salesforce budget validation
+    const sfTotal = (formData.salesForceCount || 0) * (formData.salesForceSalary || 0);
+    if (sfTotal > 8000000) {
+      alert(`Salesforce budget cannot exceed ₹80L. Current total: ₹${(sfTotal / 100000).toFixed(1)}L`);
+      return;
     }
 
     setLoading(true);
     try {
-      await addDoc(collection(db, 'decisions'), {
-        ...formData,
-        teamId: team.id,
-        sessionId: session.id,
-        round: session.currentRound,
-        submittedAt: serverTimestamp(),
-      });
+      if (draftId) {
+        await updateDoc(doc(db, 'decisions', draftId), {
+          ...formData,
+          submittedAt: serverTimestamp(),
+        });
+      } else {
+        await addDoc(collection(db, 'decisions'), {
+          ...formData,
+          teamId: team.id,
+          sessionId: session.id,
+          round: session.currentRound,
+          submittedAt: serverTimestamp(),
+        });
+      }
+      alert("Decisions submitted successfully!");
     } catch (error) {
       handleFirestoreError(error, OperationType.CREATE, 'decisions');
     } finally {
@@ -426,7 +501,7 @@ function DecisionForm({ session, team, decisions }: { session: Session, team: Te
                       value={formData.segmentAllocation![seg as keyof typeof formData.segmentAllocation]}
                       onChange={(e) => setFormData({
                         ...formData,
-                        segmentAllocation: { ...formData.segmentAllocation!, [seg]: parseInt(e.target.value) }
+                        segmentAllocation: { ...formData.segmentAllocation!, [seg]: parseInt(e.target.value) || 0 }
                       })}
                       className="w-full rounded-lg border border-slate-200 px-3 py-2"
                     />
@@ -494,20 +569,67 @@ function DecisionForm({ session, team, decisions }: { session: Session, team: Te
                   onChange={(e) => setFormData({ ...formData, productionCapacityChoice: e.target.value as 'Small' | 'Medium' | 'Large' })}
                   className="w-full rounded-lg border border-slate-200 px-3 py-2"
                 >
-                  <option value="Small">Small (75,000 units)</option>
-                  <option value="Medium">Medium (150,000 units)</option>
-                  <option value="Large">Large (175,000 units)</option>
+                  <option value="Small">Small (30,000 units)</option>
+                  <option value="Medium">Medium (50,000 units)</option>
+                  <option value="Large">High (100,000 units)</option>
                 </select>
               </div>
-              <div>
-                <label className="block text-sm font-medium text-slate-700 mb-1">Sales Force Strategy</label>
-                <select
-                  value={formData.salesForceStrategy}
-                  onChange={(e) => setFormData({ ...formData, salesForceStrategy: e.target.value })}
-                  className="w-full rounded-lg border border-slate-200 px-3 py-2"
-                >
-                  {INDUSTRY_CONTEXT.salesForceOptions.map(o => <option key={o} value={o}>{o}</option>)}
-                </select>
+              <div className="space-y-4">
+                <div>
+                  <div className="flex justify-between items-center mb-1">
+                    <label className="block text-sm font-medium text-slate-700">Sales Force Size</label>
+                    <span className="text-xs font-bold text-blue-600 bg-blue-50 px-2 py-0.5 rounded">{formData.salesForceCount} People</span>
+                  </div>
+                  <input
+                    type="range"
+                    min="5"
+                    max="25"
+                    step="1"
+                    value={formData.salesForceCount || 5}
+                    onChange={(e) => setFormData({ ...formData, salesForceCount: parseInt(e.target.value) })}
+                    className="w-full h-2 bg-slate-200 rounded-lg appearance-none cursor-pointer accent-blue-600"
+                  />
+                  <div className="flex justify-between text-[10px] text-slate-400 font-bold uppercase mt-1">
+                    <span>5 (min)</span>
+                    <span>25 (max)</span>
+                  </div>
+                </div>
+              </div>
+              <div className="space-y-4">
+                <div>
+                  <div className="flex justify-between items-center mb-1">
+                    <label className="block text-sm font-medium text-slate-700">Salary per head (annual)</label>
+                    <span className="text-xs font-bold text-indigo-600 bg-indigo-50 px-2 py-0.5 rounded">₹{(formData.salesForceSalary! / 100000).toFixed(1)}L</span>
+                  </div>
+                  <input
+                    type="range"
+                    min="300000"
+                    max="1600000"
+                    step="50000"
+                    value={formData.salesForceSalary || 500000}
+                    onChange={(e) => setFormData({ ...formData, salesForceSalary: parseInt(e.target.value) })}
+                    className="w-full h-2 bg-slate-200 rounded-lg appearance-none cursor-pointer accent-indigo-600"
+                  />
+                  <div className="flex justify-between text-[10px] text-slate-400 font-bold uppercase mt-1">
+                    <span>3L (Low)</span>
+                    <span>16L (High)</span>
+                  </div>
+                </div>
+              </div>
+              <div className={cn(
+                "sm:col-span-2 p-3 rounded-xl border flex items-center justify-between",
+                (formData.salesForceCount! * formData.salesForceSalary!) > 8000000 ? "bg-red-50 border-red-200" : "bg-blue-50 border-blue-200"
+              )}>
+                <div className="flex items-center gap-2">
+                  <DollarSign className={cn("h-5 w-5", (formData.salesForceCount! * formData.salesForceSalary!) > 8000000 ? "text-red-500" : "text-blue-500")} />
+                  <span className="text-sm font-bold text-slate-700">Total Salesforce Budget</span>
+                </div>
+                <div className="text-right">
+                  <span className={cn("text-xl font-bold", (formData.salesForceCount! * formData.salesForceSalary!) > 8000000 ? "text-red-600" : "text-blue-600")}>
+                    ₹{((formData.salesForceCount! * formData.salesForceSalary!) / 100000).toFixed(1)}L
+                  </span>
+                  <p className="text-[10px] text-slate-400 font-bold uppercase">Budget Cap: ₹80L</p>
+                </div>
               </div>
               <div>
                 <label className="block text-sm font-medium text-slate-700 mb-1">Pricing (₹ per meter)</label>
@@ -516,7 +638,7 @@ function DecisionForm({ session, team, decisions }: { session: Session, team: Te
                   min="300"
                   max="1000"
                   value={formData.pricing}
-                  onChange={(e) => setFormData({ ...formData, pricing: parseInt(e.target.value) })}
+                  onChange={(e) => setFormData({ ...formData, pricing: parseInt(e.target.value) || 0 })}
                   className="w-full rounded-lg border border-slate-200 px-3 py-2"
                 />
               </div>
@@ -545,7 +667,7 @@ function DecisionForm({ session, team, decisions }: { session: Session, team: Te
                       value={formData.distributionChannel![chan as keyof typeof formData.distributionChannel]}
                       onChange={(e) => setFormData({
                         ...formData,
-                        distributionChannel: { ...formData.distributionChannel!, [chan]: parseInt(e.target.value) }
+                        distributionChannel: { ...formData.distributionChannel!, [chan]: parseInt(e.target.value) || 0 }
                       })}
                       className="w-full rounded-lg border border-slate-200 px-3 py-2"
                     />
@@ -556,7 +678,10 @@ function DecisionForm({ session, team, decisions }: { session: Session, team: Te
 
             <div className="space-y-4">
               <div className="flex items-center justify-between">
-                <h4 className="font-semibold text-slate-800">Promotion Allocation (₹)</h4>
+                <div>
+                  <h4 className="font-semibold text-slate-800">Promotion Allocation</h4>
+                  <p className="text-[10px] text-slate-500 font-medium italic">Enter values in Lakhs of ₹ (e.g., 5 = ₹5,00,000)</p>
+                </div>
                 <div className="flex items-center gap-2">
                   <span className="text-xs text-slate-500">Max: ₹{(INDUSTRY_CONTEXT.maxPromotionBudget / 100000).toFixed(0)}L</span>
                   <span className={cn(
@@ -565,24 +690,31 @@ function DecisionForm({ session, team, decisions }: { session: Session, team: Te
                       ? "bg-blue-100 text-blue-700" 
                       : "bg-red-100 text-red-700"
                   )}>
-                    Total: ₹{(Object.values(formData.promotionAllocation!).reduce<number>((a, b) => a + (b as number), 0) / 100000).toFixed(1)}L
+                    Total: ₹{(Object.values(formData.promotionAllocation!).reduce<number>((a, b) => a + (b as number), 0) / 100000).toFixed(0)}L
                   </span>
                 </div>
               </div>
               <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
                 {Object.keys(formData.promotionAllocation!).map((prom) => (
                   <div key={prom}>
-                    <label className="block text-xs font-medium text-slate-500 uppercase mb-1">{prom.replace(/([A-Z])/g, ' $1')}</label>
-                    <input
-                      type="number"
-                      min="0"
-                      value={formData.promotionAllocation![prom as keyof typeof formData.promotionAllocation]}
-                      onChange={(e) => setFormData({
-                        ...formData,
-                        promotionAllocation: { ...formData.promotionAllocation!, [prom]: parseInt(e.target.value) }
-                      })}
-                      className="w-full rounded-lg border border-slate-200 px-3 py-2"
-                    />
+                    <label className="block text-xs font-medium text-slate-500 uppercase mb-1">{prom.replace(/([A-Z])/g, ' $1')} (₹L)</label>
+                    <div className="relative">
+                      <input
+                        type="number"
+                        min="0"
+                        step="1"
+                        value={(formData.promotionAllocation![prom as keyof typeof formData.promotionAllocation] || 0) / 100000}
+                        onChange={(e) => {
+                          const val = parseInt(e.target.value, 10) || 0;
+                          setFormData({
+                            ...formData,
+                            promotionAllocation: { ...formData.promotionAllocation!, [prom]: val * 100000 }
+                          });
+                        }}
+                        className="w-full rounded-lg border border-slate-200 pl-3 pr-8 py-2"
+                      />
+                      <span className="absolute right-3 top-1/2 -translate-y-1/2 text-slate-400 text-xs font-bold">L</span>
+                    </div>
                   </div>
                 ))}
               </div>
@@ -599,6 +731,32 @@ function DecisionForm({ session, team, decisions }: { session: Session, team: Te
           </div>
         )}
 
+        {round === 4 && (
+          <div className="p-4 bg-red-50 border border-red-200 rounded-xl flex items-start gap-3">
+            <AlertCircle className="h-5 w-5 text-red-600 mt-0.5" />
+            <p className="text-sm text-red-800">
+              <strong>Govt Tax Alert:</strong> 25% duty on imported steel has been implemented. Prices for imported goods will surge.
+            </p>
+          </div>
+        )}
+
+        {round === 5 && (
+          <div className="p-4 bg-purple-50 border border-purple-200 rounded-xl space-y-3">
+            <div className="flex items-start gap-3">
+              <AlertCircle className="h-5 w-5 text-purple-600 mt-0.5" />
+              <p className="text-sm text-purple-800">
+                <strong>Market Disruption:</strong> BIS declares 50% of CPVC pipes unhealthy. Shift to Stainless Steel expected.
+              </p>
+            </div>
+            <div className="flex items-start gap-3 border-t border-purple-100 pt-2">
+              <AlertCircle className="h-5 w-5 text-red-600 mt-0.5" />
+              <p className="text-sm text-red-800 italic">
+                Note: Import duties on steel remain extremely high.
+              </p>
+            </div>
+          </div>
+        )}
+
         <button
           type="submit"
           disabled={loading}
@@ -611,8 +769,9 @@ function DecisionForm({ session, team, decisions }: { session: Session, team: Te
   );
 }
 
-function TeamResults({ team, results, round, decisions, isAnalysisPhase }: { team: Team, results: Result[], round: number, decisions: Decision[], isAnalysisPhase: boolean }) {
+function TeamResults({ team, teams, results, round, decisions, isAnalysisPhase, sessionStatus }: { team: Team, teams: Team[], results: Result[], round: number, decisions: Decision[], isAnalysisPhase: boolean, sessionStatus: string }) {
   const [showHistory, setShowHistory] = useState(false);
+  const [showIndustryDecisions, setShowIndustryDecisions] = useState(false);
   const teamResults = results.filter(r => r.teamId === team.id).sort((a, b) => a.round - b.round);
   const myDecisions = decisions.filter(d => d.teamId === team.id).sort((a, b) => a.round - b.round);
   
@@ -628,12 +787,17 @@ function TeamResults({ team, results, round, decisions, isAnalysisPhase }: { tea
     return (
       <div className="bg-white rounded-2xl p-8 shadow-sm border border-slate-200 text-center">
         <Loader2 className="h-8 w-8 animate-spin text-blue-600 mx-auto mb-4" />
-        <p className="text-slate-500">Waiting for round results...</p>
+        <h3 className="text-lg font-bold text-slate-900 mb-2">Round {round} Submitted!</h3>
+        <p className="text-slate-500 mb-6">Please wait while other teams submit their decisions. Once all teams are ready, the instructor will advance the game to reveal the results.</p>
+        <div className="flex items-center justify-center gap-2 text-amber-600 bg-amber-50 px-4 py-2 rounded-lg border border-amber-100 inline-flex">
+          <Clock className="h-4 w-4" />
+          <span className="text-sm font-medium">Waiting for instructor...</span>
+        </div>
       </div>
     );
   }
 
-  if (displayResult.round === 1) {
+  if (displayResult.round === 1 && isAnalysisPhase) {
     return (
       <div className="bg-blue-50 rounded-2xl p-8 shadow-sm border border-blue-200 text-center">
         <Info className="h-8 w-8 text-blue-600 mx-auto mb-4" />
@@ -661,6 +825,20 @@ function TeamResults({ team, results, round, decisions, isAnalysisPhase }: { tea
 
   return (
     <div className="space-y-8">
+      {!isAnalysisPhase && sessionStatus === 'active' && (
+        <div className="bg-amber-50 border border-amber-200 rounded-2xl p-6 flex flex-col sm:flex-row items-center gap-4 shadow-sm animate-pulse">
+          <div className="bg-amber-100 p-3 rounded-full">
+            <Clock className="h-6 w-6 text-amber-600" />
+          </div>
+          <div className="text-center sm:text-left flex-1">
+            <h4 className="font-bold text-amber-900">Decisions Locked for Round {round}</h4>
+            <p className="text-sm text-amber-800">
+              Your strategy has been submitted. Please wait while other teams finish. The instructor will move the competition forward once all teams have submitted.
+            </p>
+          </div>
+        </div>
+      )}
+
       {/* KPI Cards */}
       <div className="grid grid-cols-2 sm:grid-cols-4 gap-4">
         <KPIBox 
@@ -806,14 +984,108 @@ function TeamResults({ team, results, round, decisions, isAnalysisPhase }: { tea
         </div>
       </div>
 
+      {/* FINAL TRANSPARENCY: Round 6 Analysis Phase or Completed Status */}
+      {( (round === 6 && isAnalysisPhase) || sessionStatus === 'completed') && (
+        <motion.div 
+          initial={{ opacity: 0, y: 20 }}
+          animate={{ opacity: 1, y: 0 }}
+          className="bg-gradient-to-br from-indigo-900 to-slate-900 rounded-3xl p-8 text-white shadow-2xl border border-indigo-500/30"
+        >
+          <div className="flex items-center gap-3 mb-8">
+            <div className="bg-white/20 p-3 rounded-2xl backdrop-blur-md">
+              <Trophy className="h-8 w-8 text-amber-400" />
+            </div>
+            <div>
+              <h3 className="text-2xl font-black tracking-tight">Final Market Disclosure</h3>
+              <p className="text-indigo-200 font-medium">Complete Financial Transparency of All Competitors</p>
+            </div>
+          </div>
+
+          <div className="overflow-x-auto">
+            <table className="w-full text-left min-w-[800px]">
+              <thead>
+                <tr className="border-b border-white/10 text-[10px] font-black uppercase tracking-widest text-white/50">
+                  <th className="py-4 px-2">Team Name</th>
+                  <th className="py-4 px-2">Revenue</th>
+                  <th className="py-4 px-2">Variable costs</th>
+                  <th className="py-4 px-2">Gross Margin</th>
+                  <th className="py-4 px-2">Marketing</th>
+                  <th className="py-4 px-2">Sales Force</th>
+                  <th className="py-4 px-2">Fixed Costs</th>
+                  <th className="py-4 px-2">Net Profit</th>
+                </tr>
+              </thead>
+              <tbody className="divide-y divide-white/5">
+                {teams.map(t => {
+                  const teamResults = results.filter(r => r.teamId === t.id && r.round <= 6);
+                  const totalProfit = teamResults.reduce((sum, r) => sum + (r.profit || 0), 0);
+                  const totalRevenue = teamResults.reduce((sum, r) => sum + (r.revenue || 0), 0);
+                  const totalFixed = teamResults.reduce((sum, r) => sum + (r.fixedCosts || 0), 0);
+                  const totalSF = teamResults.reduce((sum, r) => sum + (r.salesForceCosts || 0), 0);
+                  const totalProm = teamResults.reduce((sum, r) => sum + (r.promotionCosts || 0), 0);
+                  const totalVar = teamResults.reduce((sum, r) => sum + (r.variableCosts || 0), 0);
+                  const totalContribution = teamResults.reduce((sum, r) => sum + (r.contributionMargin || 0), 0);
+                  
+                  return { t, totalProfit, totalRevenue, totalFixed, totalSF, totalProm, totalVar, totalContribution };
+                })
+                .sort((a, b) => b.totalProfit - a.totalProfit)
+                .map(({ t, totalProfit, totalRevenue, totalFixed, totalSF, totalProm, totalVar, totalContribution }, idx) => (
+                  <tr key={t.id} className={cn("group transition-colors", t.id === team.id && "bg-white/5")}>
+                    <td className="py-4 px-2">
+                       <div className="flex items-center gap-2">
+                         <span className="text-xs text-white/40 font-bold w-4">#{idx+1}</span>
+                         <div>
+                           <p className="font-bold text-sm leading-tight">{t.name}</p>
+                           {t.id === team.id && <p className="text-[9px] text-indigo-300 uppercase tracking-tighter">Current Team</p>}
+                         </div>
+                       </div>
+                    </td>
+                    <td className="py-4 px-2 text-indigo-100/70 text-xs font-mono">₹{(totalRevenue / 10000000).toFixed(2)} Cr</td>
+                    <td className="py-4 px-2 text-red-300/50 text-xs font-mono">-₹{(totalVar / 10000000).toFixed(2)} Cr</td>
+                    <td className="py-4 px-2 text-indigo-300 font-bold text-xs font-mono">₹{(totalContribution / 10000000).toFixed(2)} Cr</td>
+                    <td className="py-4 px-2 text-red-200/40 text-[10px] font-mono">₹{(totalProm / 100000).toFixed(1)} L</td>
+                    <td className="py-4 px-2 text-red-200/40 text-[10px] font-mono">₹{(totalSF / 100000).toFixed(1)} L</td>
+                    <td className="py-4 px-2 text-red-200/40 text-[10px] font-mono">₹{(totalFixed / 100000).toFixed(1)} L</td>
+                    <td className={cn("py-4 px-2 font-black font-mono text-sm", totalProfit >= 0 ? "text-green-400" : "text-red-400")}>
+                      ₹{(totalProfit / 10000000).toFixed(2)} Cr
+                    </td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+          
+          <div className="mt-8 pt-6 border-t border-white/10 flex flex-col sm:flex-row justify-between items-center gap-4">
+             <div className="flex items-center gap-2 text-xs font-bold uppercase tracking-wider text-white/50">
+               <Info className="h-4 w-4" />
+               Based on all 6 simulation rounds
+             </div>
+             <button 
+                onClick={() => window.print()}
+                className="bg-white text-slate-900 px-6 py-2 rounded-xl font-bold hover:bg-indigo-50 transition-all flex items-center gap-2"
+             >
+               Print Final Report
+             </button>
+          </div>
+        </motion.div>
+      )}
+
       {/* Decision History Toggle */}
-      <div className="flex justify-center">
+      <div className="flex flex-col sm:flex-row justify-center gap-4">
         <button 
           onClick={() => setShowHistory(!showHistory)}
-          className="flex items-center gap-2 text-blue-600 font-semibold hover:text-blue-700 transition-colors"
+          className="flex items-center justify-center gap-2 text-blue-600 font-semibold hover:text-blue-700 transition-colors bg-white px-4 py-2 rounded-xl border border-slate-200 shadow-sm"
         >
-          {showHistory ? 'Hide Decision History' : 'View Decision History'}
+          {showHistory ? 'Hide My History' : 'My Decision History'}
           <ChevronRight className={cn("h-4 w-4 transition-transform", showHistory && "rotate-90")} />
+        </button>
+
+        <button 
+          onClick={() => setShowIndustryDecisions(!showIndustryDecisions)}
+          className="flex items-center justify-center gap-2 text-indigo-600 font-semibold hover:text-indigo-700 transition-colors bg-white px-4 py-2 rounded-xl border border-slate-200 shadow-sm"
+        >
+          {showIndustryDecisions ? 'Hide Market Decisions' : 'View Industry Decisions'}
+          <ChevronRight className={cn("h-4 w-4 transition-transform", showIndustryDecisions && "rotate-90")} />
         </button>
       </div>
 
@@ -823,11 +1095,11 @@ function TeamResults({ team, results, round, decisions, isAnalysisPhase }: { tea
             initial={{ opacity: 0, height: 0 }}
             animate={{ opacity: 1, height: 'auto' }}
             exit={{ opacity: 0, height: 0 }}
-            className="space-y-6 overflow-hidden"
+            className="space-y-6 overflow-hidden mb-8"
           >
             <h4 className="font-bold text-slate-900 flex items-center gap-2">
               <Award className="h-5 w-5 text-blue-600" />
-              Decision History
+              My Decision History
             </h4>
             <div className="grid grid-cols-1 gap-4">
               {myDecisions.map((dec) => (
@@ -852,12 +1124,78 @@ function TeamResults({ team, results, round, decisions, isAnalysisPhase }: { tea
                       <p className="font-semibold">{dec.positioning}</p>
                     </div>
                     <div>
-                      <p className="text-slate-500 text-[10px] uppercase font-bold">Product</p>
-                      <p className="font-semibold">{dec.productStrategy || 'N/A'}</p>
+                      <p className="text-slate-500 text-[10px] uppercase font-bold">Sales Force</p>
+                      <p className="font-semibold">{dec.salesForceCount} / ₹{(dec.salesForceSalary / 100000).toFixed(1)}L</p>
                     </div>
                   </div>
                 </div>
               ))}
+            </div>
+          </motion.div>
+        )}
+
+        {showIndustryDecisions && (
+          <motion.div
+            initial={{ opacity: 0, height: 0 }}
+            animate={{ opacity: 1, height: 'auto' }}
+            exit={{ opacity: 0, height: 0 }}
+            className="space-y-6 overflow-hidden bg-slate-50 p-6 rounded-2xl border border-slate-200"
+          >
+            <div className="flex items-center justify-between">
+              <h4 className="font-bold text-slate-900 flex items-center gap-2">
+                <BarChart3 className="h-5 w-5 text-indigo-600" />
+                Industry Decisions (Past Rounds)
+              </h4>
+              <div className="text-[10px] bg-indigo-100 text-indigo-700 font-bold px-2 py-1 rounded">
+                MARKET TRANSPARENCY
+              </div>
+            </div>
+
+            <div className="overflow-x-auto">
+              <table className="w-full text-left bg-white rounded-xl shadow-sm border border-slate-100 overflow-hidden">
+                <thead>
+                  <tr className="bg-slate-50 border-b border-slate-100">
+                    <th className="py-2 px-4 text-[10px] font-bold text-slate-400 uppercase">Round</th>
+                    <th className="py-2 px-4 text-[10px] font-bold text-slate-400 uppercase">Team</th>
+                    <th className="py-2 px-4 text-[10px] font-bold text-slate-400 uppercase">Pricing</th>
+                    <th className="py-2 px-4 text-[10px] font-bold text-slate-400 uppercase">Positioning</th>
+                    <th className="py-2 px-4 text-[10px] font-bold text-slate-400 uppercase">Sourcing</th>
+                    <th className="py-2 px-4 text-[10px] font-bold text-slate-400 uppercase">Sales Force</th>
+                  </tr>
+                </thead>
+                <tbody className="divide-y divide-slate-50">
+                  {/* Show decisions only for completed rounds or previous rounds */}
+                  {[1, 2, 3, 4, 5, 6]
+                    .filter(r => r < round || (r === round && isAnalysisPhase) || sessionStatus === 'completed')
+                    .reverse()
+                    .map(r => (
+                      <React.Fragment key={`round-${r}`}>
+                        {teams.map(t => {
+                          const dec = decisions.find(d => d.teamId === t.id && d.round === r);
+                          if (!dec) return null;
+                          return (
+                            <tr key={dec.id} className={cn("text-xs", t.id === team.id ? "bg-blue-50/50" : "")}>
+                              <td className="py-3 px-4 font-bold text-slate-400">R{r}</td>
+                              <td className="py-3 px-4 font-bold text-slate-700">
+                                {t.name} {t.id === team.id && <span className="ml-1 text-[10px] text-blue-500 font-normal underline">(You)</span>}
+                              </td>
+                              <td className="py-3 px-4 font-medium">₹{dec.pricing || 'N/A'}</td>
+                              <td className="py-3 px-4">{dec.positioning}</td>
+                              <td className="py-3 px-4">{dec.sourcing || 'Domestic'}</td>
+                              <td className="py-3 px-4 text-slate-500">{dec.salesForceCount} / ₹{(dec.salesForceSalary / 100000).toFixed(1)}L</td>
+                            </tr>
+                          );
+                        })}
+                      </React.Fragment>
+                    ))
+                  }
+                </tbody>
+              </table>
+              {![1, 2, 3, 4, 5].some(r => r < round || (r === round && isAnalysisPhase)) && (
+                <div className="text-center py-8 text-slate-400 italic text-sm">
+                  Transparency will be available after Round 1 results are revealed.
+                </div>
+              )}
             </div>
           </motion.div>
         )}
@@ -1123,12 +1461,30 @@ function MarketContext({ round }: { round: number }) {
         Market Context
       </h3>
       <div className="space-y-4 text-sm text-slate-600">
+        {round >= 4 && (
+          <div className="p-3 bg-red-50 rounded-xl border border-red-100 flex items-start gap-2">
+            <AlertCircle className="h-4 w-4 text-red-600 mt-0.5" />
+            <div>
+              <p className="font-bold text-red-800 text-xs uppercase">Policy Impact</p>
+              <p className="text-red-700 text-xs">Customs duty on raw steel imports is active (25%).</p>
+            </div>
+          </div>
+        )}
+        {round === 5 && (
+          <div className="p-3 bg-purple-50 rounded-xl border border-purple-100 flex items-start gap-2">
+            <TrendingUp className="h-4 w-4 text-purple-600 mt-0.5" />
+            <div>
+              <p className="font-bold text-purple-800 text-xs uppercase">Industry Shift</p>
+              <p className="text-purple-700 text-xs">Major shift from CPVC to Stainless Steel observed.</p>
+            </div>
+          </div>
+        )}
         <div className="p-3 bg-blue-50 rounded-xl border border-blue-100">
           <p className="font-semibold text-blue-800 mb-1">Industry Overview</p>
           <ul className="list-disc list-inside space-y-1">
-            <li>CPVC Market Share: 85%</li>
+            <li>CPVC Market Share: {round === 5 ? '~35%' : '85%'}</li>
             <li>Iron Pipes: 8%</li>
-            <li>Stainless Steel: 7% (Emerging)</li>
+            <li>Stainless Steel: {round === 5 ? '20%+' : '7%'}</li>
           </ul>
         </div>
         <div className="p-3 bg-indigo-50 rounded-xl border border-indigo-100">
@@ -1161,7 +1517,13 @@ function InstructorControls({ session, teams, decisions, results }: { session: S
     const previousResults = results.filter(r => r.round === session.currentRound - 1);
     
     // Calculate results
-    const newResults = calculateRoundResults(teams, currentRoundDecisions, previousResults, session.currentRound);
+    const newResults = calculateRoundResults(
+      teams, 
+      currentRoundDecisions, 
+      previousResults, 
+      session.currentRound,
+      session.totalMarketSize
+    );
     
     // Save results
     const batch = writeBatch(db);
@@ -1181,7 +1543,7 @@ function InstructorControls({ session, teams, decisions, results }: { session: S
   const startNextRound = async () => {
     setLoading(true);
     const sessionRef = doc(db, 'sessions', session.id);
-    if (session.currentRound < 5) {
+    if (session.currentRound < 6) {
       await updateDoc(sessionRef, { 
         currentRound: session.currentRound + 1,
         isAnalysisPhase: false 
@@ -1238,7 +1600,8 @@ function InstructorControls({ session, teams, decisions, results }: { session: S
   );
 }
 
-function CompetitionBenchmark() {
+function CompetitionBenchmark({ totalMarketSize }: { totalMarketSize?: number }) {
+  const displayMarketSize = totalMarketSize || 6000000;
   return (
     <div className="bg-white rounded-2xl p-8 shadow-sm border border-slate-200">
       <div className="flex items-center gap-3 mb-6">
@@ -1254,7 +1617,7 @@ function CompetitionBenchmark() {
       <div className="grid grid-cols-1 md:grid-cols-3 gap-6 mb-8">
         <div className="p-4 bg-slate-50 rounded-xl border border-slate-100">
           <p className="text-xs font-bold text-slate-400 uppercase mb-1">Total Market Size</p>
-          <p className="text-2xl font-bold text-slate-900">1,000,000 units</p>
+          <p className="text-2xl font-bold text-slate-900">{displayMarketSize.toLocaleString()} units</p>
           <p className="text-xs text-green-600 font-medium mt-1">↑ 15% Annual Growth</p>
         </div>
         <div className="p-4 bg-slate-50 rounded-xl border border-slate-100">
@@ -1386,15 +1749,15 @@ function InstructorOverview({ session, teams, decisions, results }: { session: S
             </div>
           </div>
           <div className="flex items-center gap-2 bg-slate-100 p-1 rounded-lg">
-            {[1, 2, 3, 4, 5].map(r => (
+            {[1, 2, 3, 4, 5, 6].map(r => (
               <button
                 key={r}
                 onClick={() => setViewRound(r)}
-                disabled={r > (session.status === 'completed' ? 5 : session.currentRound)}
+                disabled={r > (session.status === 'completed' ? 6 : session.currentRound)}
                 className={cn(
                   "px-3 py-1 rounded-md text-xs font-bold transition-all",
                   viewRound === r ? "bg-white text-blue-600 shadow-sm" : "text-slate-500 hover:text-slate-700",
-                  r > (session.status === 'completed' ? 5 : session.currentRound) && "opacity-30 cursor-not-allowed"
+                  r > (session.status === 'completed' ? 6 : session.currentRound) && "opacity-30 cursor-not-allowed"
                 )}
               >
                 R{r}
@@ -1466,15 +1829,15 @@ function InstructorOverview({ session, teams, decisions, results }: { session: S
           <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
             <div className="p-4 bg-blue-50 rounded-xl border border-blue-100">
               <p className="text-[10px] font-bold text-blue-600 uppercase mb-1">Avg Industry Price</p>
-              <p className="text-2xl font-bold text-blue-900">₹{Math.round(avgPrice)}</p>
+              <p className="text-2xl font-bold text-blue-900">{viewRound >= 2 ? `₹${Math.round(avgPrice)}` : 'N/A'}</p>
             </div>
             <div className="p-4 bg-indigo-50 rounded-xl border border-indigo-100">
               <p className="text-[10px] font-bold text-indigo-600 uppercase mb-1">Avg Promotion Spend</p>
-              <p className="text-2xl font-bold text-indigo-900">₹{(avgProm / 100000).toFixed(1)}L</p>
+              <p className="text-2xl font-bold text-indigo-900">{viewRound >= 2 ? `₹${(avgProm / 100000).toFixed(1)}L` : 'N/A'}</p>
             </div>
             <div className="p-4 bg-amber-50 rounded-xl border border-amber-100">
               <p className="text-[10px] font-bold text-amber-600 uppercase mb-1">Top Performer (R{viewRound})</p>
-              <p className="text-2xl font-bold text-amber-900">{topPerformer?.name || 'N/A'}</p>
+              <p className="text-2xl font-bold text-amber-900">{viewRound >= 2 ? (topPerformer?.name || 'N/A') : 'N/A'}</p>
             </div>
           </div>
         )}
@@ -1504,7 +1867,7 @@ function InstructorOverview({ session, teams, decisions, results }: { session: S
             {selectedDecision ? (
               <div className="space-y-8">
                 {/* Results Summary if available */}
-                {selectedResult && (
+                {selectedResult && viewRound >= 2 && (
                   <div className="grid grid-cols-2 sm:grid-cols-4 gap-4 p-4 bg-slate-50 rounded-xl border border-slate-100">
                     <div>
                       <p className="text-[10px] uppercase text-slate-500 font-bold">Revenue</p>
@@ -1526,7 +1889,7 @@ function InstructorOverview({ session, teams, decisions, results }: { session: S
                 )}
 
                 {/* Strategy Explanation */}
-                {selectedResult && (
+                {selectedResult && viewRound >= 2 && (
                   <div className="p-4 bg-blue-50 rounded-xl border border-blue-100">
                     <p className="text-xs font-bold text-blue-600 uppercase mb-2">Strategy Explanation</p>
                     <p className="text-sm italic text-blue-800 leading-relaxed">"{selectedResult.explanation}"</p>
@@ -1536,12 +1899,12 @@ function InstructorOverview({ session, teams, decisions, results }: { session: S
                 <div className="grid grid-cols-1 md:grid-cols-2 gap-8">
                   <div className="space-y-4">
                     <h4 className="font-semibold text-slate-800 border-b pb-2">Strategy & Sourcing</h4>
-                    <p className="text-sm"><span className="text-slate-500">Positioning:</span> {selectedDecision.positioning}</p>
-                    <p className="text-sm"><span className="text-slate-500">Capacity:</span> <span className="font-bold">{selectedDecision.productionCapacityChoice || 'Medium'}</span></p>
-                    <p className="text-sm"><span className="text-slate-500">Sales Force:</span> <span className="font-bold">{selectedDecision.salesForceStrategy || 'Standard'}</span></p>
-                    <p className="text-sm"><span className="text-slate-500">Sourcing:</span> <span className="font-bold text-blue-600">{selectedDecision.sourcing || 'Domestic'}</span></p>
+                    <p className="text-sm"><span className="text-slate-500">Positioning:</span> {selectedDecision.positioning || '-'}</p>
+                    <p className="text-sm"><span className="text-slate-500">Capacity:</span> <span className="font-bold">{viewRound >= 2 ? (selectedDecision.productionCapacityChoice || 'Medium') : '-'}</span></p>
+                    <p className="text-sm"><span className="text-slate-500">Sales Force:</span> <span className="font-bold">{viewRound >= 2 ? `${selectedDecision.salesForceCount} / ₹${(selectedDecision.salesForceSalary / 100000).toFixed(1)}L` : '-'}</span></p>
+                    <p className="text-sm"><span className="text-slate-500">Sourcing:</span> <span className="font-bold text-blue-600">{viewRound >= 2 ? (selectedDecision.sourcing || 'Domestic') : '-'}</span></p>
                     
-                    {selectedDecision.assumptions && (
+                    {selectedDecision.assumptions && viewRound === 1 && (
                       <div className="mt-4 p-3 bg-slate-50 rounded-lg">
                         <p className="text-xs font-bold text-slate-500 uppercase mb-1">Assumptions</p>
                         <p className="text-sm italic text-slate-700">"{selectedDecision.assumptions}"</p>
@@ -1553,26 +1916,26 @@ function InstructorOverview({ session, teams, decisions, results }: { session: S
                     <div className="grid grid-cols-2 gap-4 mb-4">
                       <div className="p-2 bg-slate-50 rounded-lg">
                         <p className="text-[10px] uppercase text-slate-500 font-bold">Pricing</p>
-                        <p className="text-sm font-bold">₹{selectedDecision.pricing}</p>
+                        <p className="text-sm font-bold">{viewRound >= 2 ? (selectedDecision.pricing ? `₹${selectedDecision.pricing}` : '-') : '-'}</p>
                       </div>
                       <div className="p-2 bg-slate-50 rounded-lg">
                         <p className="text-[10px] uppercase text-slate-500 font-bold">Product</p>
-                        <p className="text-sm font-bold">{selectedDecision.productStrategy}</p>
+                        <p className="text-sm font-bold">{viewRound >= 2 ? (selectedDecision.productStrategy || '-') : '-'}</p>
                       </div>
                     </div>
                     
                     <div className="grid grid-cols-3 gap-2">
                       <div className="text-center p-2 bg-blue-50 rounded-lg">
                         <p className="text-[10px] uppercase text-blue-600 font-bold">Resi</p>
-                        <p className="text-sm font-bold">{selectedDecision.segmentAllocation?.residential || 0}%</p>
+                        <p className="text-sm font-bold">{selectedDecision.segmentAllocation?.residential ?? 0}%</p>
                       </div>
                       <div className="text-center p-2 bg-green-50 rounded-lg">
                         <p className="text-[10px] uppercase text-green-600 font-bold">Comm</p>
-                        <p className="text-sm font-bold">{selectedDecision.segmentAllocation?.commercial || 0}%</p>
+                        <p className="text-sm font-bold">{selectedDecision.segmentAllocation?.commercial ?? 0}%</p>
                       </div>
                       <div className="text-center p-2 bg-indigo-50 rounded-lg">
                         <p className="text-[10px] uppercase text-indigo-600 font-bold">Gov</p>
-                        <p className="text-sm font-bold">{selectedDecision.segmentAllocation?.government || 0}%</p>
+                        <p className="text-sm font-bold">{selectedDecision.segmentAllocation?.government ?? 0}%</p>
                       </div>
                     </div>
                   </div>
@@ -1584,15 +1947,15 @@ function InstructorOverview({ session, teams, decisions, results }: { session: S
                     <div className="grid grid-cols-3 gap-2">
                       <div className="text-center p-2 bg-slate-50 rounded-lg">
                         <p className="text-[10px] uppercase text-slate-500 font-bold">Influencers</p>
-                        <p className="text-sm font-bold">{selectedDecision.distributionChannel?.influencers || 0}%</p>
+                        <p className="text-sm font-bold">{viewRound >= 2 ? `${selectedDecision.distributionChannel?.influencers ?? 0}%` : '-'}</p>
                       </div>
                       <div className="text-center p-2 bg-slate-50 rounded-lg">
                         <p className="text-[10px] uppercase text-slate-500 font-bold">Dealers</p>
-                        <p className="text-sm font-bold">{selectedDecision.distributionChannel?.dealers || 0}%</p>
+                        <p className="text-sm font-bold">{viewRound >= 2 ? `${selectedDecision.distributionChannel?.dealers ?? 0}%` : '-'}</p>
                       </div>
                       <div className="text-center p-2 bg-slate-50 rounded-lg">
                         <p className="text-[10px] uppercase text-slate-500 font-bold">Direct</p>
-                        <p className="text-sm font-bold">{selectedDecision.distributionChannel?.direct || 0}%</p>
+                        <p className="text-sm font-bold">{viewRound >= 2 ? `${selectedDecision.distributionChannel?.direct ?? 0}%` : '-'}</p>
                       </div>
                     </div>
                   </div>
@@ -1601,19 +1964,19 @@ function InstructorOverview({ session, teams, decisions, results }: { session: S
                     <div className="grid grid-cols-2 gap-2">
                       <div className="p-2 bg-slate-50 rounded-lg flex justify-between items-center">
                         <span className="text-[10px] uppercase text-slate-500 font-bold">Events</span>
-                        <span className="text-xs font-bold">₹{((selectedDecision.promotionAllocation?.events || 0) / 100000).toFixed(1)}L</span>
+                        <span className="text-xs font-bold">{viewRound >= 2 ? `₹${((selectedDecision.promotionAllocation?.events || 0) / 100000).toFixed(1)}L` : '-'}</span>
                       </div>
                       <div className="p-2 bg-slate-50 rounded-lg flex justify-between items-center">
                         <span className="text-[10px] uppercase text-slate-500 font-bold">Social</span>
-                        <span className="text-xs font-bold">₹{((selectedDecision.promotionAllocation?.socialMedia || 0) / 100000).toFixed(1)}L</span>
+                        <span className="text-xs font-bold">{viewRound >= 2 ? `₹${((selectedDecision.promotionAllocation?.socialMedia || 0) / 100000).toFixed(1)}L` : '-'}</span>
                       </div>
                       <div className="p-2 bg-slate-50 rounded-lg flex justify-between items-center">
                         <span className="text-[10px] uppercase text-slate-500 font-bold">Trade</span>
-                        <span className="text-xs font-bold">₹{((selectedDecision.promotionAllocation?.tradeMagazines || 0) / 100000).toFixed(1)}L</span>
+                        <span className="text-xs font-bold">{viewRound >= 2 ? `₹${((selectedDecision.promotionAllocation?.tradeMagazines || 0) / 100000).toFixed(1)}L` : '-'}</span>
                       </div>
                       <div className="p-2 bg-slate-50 rounded-lg flex justify-between items-center">
                         <span className="text-[10px] uppercase text-slate-500 font-bold">Inf. Events</span>
-                        <span className="text-xs font-bold">₹{((selectedDecision.promotionAllocation?.influencerEvents || 0) / 100000).toFixed(1)}L</span>
+                        <span className="text-xs font-bold">{viewRound >= 2 ? `₹${((selectedDecision.promotionAllocation?.influencerEvents || 0) / 100000).toFixed(1)}L` : '-'}</span>
                       </div>
                     </div>
                   </div>

@@ -4,9 +4,10 @@ export function calculateRoundResults(
   teams: Team[],
   decisions: Decision[],
   previousResults: Result[],
-  round: number
+  round: number,
+  sessionTotalMarketSize?: number
 ): Result[] {
-  let baseMarketDemand = 1000000; // Base units for the industry
+  let baseMarketDemand = sessionTotalMarketSize || 6000000; // Use customized base units or default to 6,000,000
   const results: Result[] = [];
 
   // 1. Dynamic Market Demand based on total industry promotion
@@ -26,10 +27,19 @@ export function calculateRoundResults(
   // 2. Stainless Steel Addressable Market (CRITICAL)
   let ssMarketShare = 0.07;
   if (round === 5) ssMarketShare = 0.20;
+  if (round >= 6) ssMarketShare = 0.25; // Continuous growth
   totalMarketDemand *= ssMarketShare;
 
-  if (round === 5) {
-    totalMarketDemand *= 1.5;
+  if (round >= 5) {
+    totalMarketDemand *= 1.5; // Significant market expansion
+  }
+
+  // Round 6: New Entrant Impact
+  let entrantVolume = 0;
+  if (round === 6) {
+    // New entrant takes 1 lakh capacity (100,000 units)
+    entrantVolume = 100000;
+    totalMarketDemand = Math.max(0, totalMarketDemand - entrantVolume);
   }
 
   // Calculate scores for each team
@@ -60,62 +70,62 @@ export function calculateRoundResults(
     const price = decision.pricing || 550;
 
     // 1. Production Capacity Decision
-    let capacity = 150000;
+    let capacity = 50000;
     let fixedCosts = 2000000;
     switch (decision.productionCapacityChoice) {
       case 'Small':
-        capacity = 75000;
+        capacity = 30000;
         fixedCosts = 1000000;
         break;
       case 'Medium':
-        capacity = 150000;
+        capacity = 50000;
         fixedCosts = 2000000;
         break;
       case 'Large':
-        capacity = 175000;
+        capacity = 100000;
         fixedCosts = 3500000;
         break;
     }
 
-    // 2. Sales Force Strategy
-    let salesForceCost = 0;
-    let salesForceEfficiency = 1.0;
-    let b2bBonus = 1.0;
-    let dealerBonus = 1.0;
     let strengths: string[] = [];
     let weaknesses: string[] = [];
 
-    switch (decision.salesForceStrategy) {
-      case 'Small Highly Trained B2B Force':
-        salesForceCost = 800000; // High salary + incentives
-        salesForceEfficiency = 1.15;
-        b2bBonus = 1.3;
-        dealerBonus = 0.7;
-        strengths.push('Strong B2B conversion');
-        weaknesses.push('Weak dealer handling');
-        break;
-      case 'Medium Semi-Trained Mixed Force':
-        salesForceCost = 1000000;
-        salesForceEfficiency = 1.05;
-        b2bBonus = 1.05;
-        dealerBonus = 1.05;
-        strengths.push('Balanced sales capability');
-        break;
-      case 'Large Low-Trained Frontline Force':
-        salesForceCost = 1200000; // High headcount but low training
-        salesForceEfficiency = 0.9;
-        b2bBonus = 0.8;
-        dealerBonus = 1.1;
-        strengths.push('High market coverage');
-        weaknesses.push('Low conversion efficiency');
-        break;
-      case 'Large Highly Trained Force':
-        salesForceCost = 2500000; // Very high cost
-        salesForceEfficiency = 1.25;
-        b2bBonus = 1.2;
-        dealerBonus = 1.2;
-        strengths.push('Elite sales force');
-        break;
+    // 2. Sales Force Strategy
+    // Count: 5-25, Salary: 3L-16L (300,000 - 1,600,000)
+    const sfCount = decision.salesForceCount || 5;
+    const sfSalary = decision.salesForceSalary || 500000;
+    
+    let salesForceCost = sfCount * sfSalary;
+    // Cap verification (though UI should handle it)
+    if (salesForceCost > 8000000) {
+      salesForceCost = 8000000;
+      weaknesses.push('Salesforce budget exceeded cap (₹80L); strategy restricted.');
+    }
+
+    // Efficiency tied to salary (3L = 0.5, 16L = 1.7)
+    const skillMultiplier = 0.5 + ((sfSalary - 300000) / 1300000) * 1.2;
+    // Reach tied to count (5 = 0.85, 25 = 1.25)
+    const reachMultiplier = 0.85 + ((sfCount - 5) / 20) * 0.4;
+    
+    let salesForceEfficiency = skillMultiplier * reachMultiplier;
+    let b2bBonus = 1.0;
+    let dealerBonus = 1.0;
+
+    // Specific Segment/Channel Bonuses
+    if (skillMultiplier > 1.2) {
+      b2bBonus = 1.3;
+      strengths.push('Expert B2B negotiations');
+    } else if (skillMultiplier < 0.9) {
+      b2bBonus = 0.7;
+      weaknesses.push('Limited complex sales ability');
+    }
+
+    if (reachMultiplier > 1.1) {
+      dealerBonus = 1.2;
+      strengths.push('Extensive dealer coverage');
+    } else if (reachMultiplier < 0.95) {
+      dealerBonus = 0.8;
+      weaknesses.push('Narrow market reach');
     }
 
     // A. Product Strategy Impact (Quality level)
@@ -155,7 +165,7 @@ export function calculateRoundResults(
 
     if (decision.sourcing === 'Imported') {
       sourcingScoreMult = 1.1; 
-      sourcingCostMult = 1.25; 
+      sourcingCostMult = round >= 4 ? 1.6 : 1.25; 
     } else {
       // Domestic advantage in Government
       sourcingScoreMult = 1 + (segAlloc.government * 0.002);
@@ -250,11 +260,15 @@ export function calculateRoundResults(
       priceFactor = 1.1 - Math.abs(price - 550) / 600; 
     }
 
-    // Round 4 External Event Impact on Imported
-    if (round === 4 && decision.sourcing === 'Imported') {
+    // Round 4+ External Event Impact on Imported
+    if (round >= 4 && decision.sourcing === 'Imported') {
       sourcingScoreMult *= 0.6;
       priceFactor *= 0.75;
-      weaknesses.push('Heavy impact from import duties');
+      if (round === 4) {
+        weaknesses.push('Heavy impact from import duties');
+      } else if (round === 5) {
+        weaknesses.push('Import duties remain extremely high; cost of imported goods is surging');
+      }
     }
 
     // H. Price-Positioning Alignment

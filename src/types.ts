@@ -17,6 +17,7 @@ export interface Session {
   isAnalysisPhase: boolean;
   createdAt: any;
   isLocked: boolean;
+  totalMarketSize?: number;
 }
 
 export interface Team {
@@ -59,7 +60,8 @@ export interface Decision {
   promotionAllocation: PromotionAllocation;
   sourcing: 'Domestic' | 'Imported';
   productionCapacityChoice: 'Small' | 'Medium' | 'Large';
-  salesForceStrategy: string;
+  salesForceCount: number;
+  salesForceSalary: number;
   overallStrategy: string;
   assumptions?: string;
   submittedAt: any;
@@ -106,12 +108,8 @@ export const INDUSTRY_CONTEXT = {
   positioning: ['Quality-driven', 'Emotional (safety, health)', 'Competitive (price-focused)'],
   productStrategy: ['Premium (high grade steel)', 'Medium (Indian steel)', 'Average', 'Product + Service (site supervision)'],
   capacityOptions: ['Small', 'Medium', 'Large'],
-  salesForceOptions: [
-    'Small Highly Trained B2B Force',
-    'Medium Semi-Trained Mixed Force',
-    'Large Low-Trained Frontline Force',
-    'Large Highly Trained Force'
-  ],
+  salesForceSizeOptions: ['Small', 'Medium', 'Large'],
+  salesForceSkillOptions: ['Low', 'Medium', 'High'],
   pricingRange: { min: 300, max: 1000 },
   promotionBudget: 5000000, // Initial default
   maxPromotionBudget: 8000000, 
