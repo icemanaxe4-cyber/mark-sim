@@ -17,6 +17,7 @@ export interface Session {
   isAnalysisPhase: boolean;
   createdAt: any;
   isLocked: boolean;
+  isCapacityLocked?: boolean;
   totalMarketSize?: number;
 }
 

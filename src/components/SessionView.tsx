@@ -200,6 +200,19 @@ export default function SessionView({ user }: { user: UserProfile }) {
               <DecisionForm session={session} team={myTeam!} decisions={decisions} />
             )}
 
+            {/* Waiting screen: submitted but analysis hasn't started yet */}
+            {!isInstructor && hasSubmitted && !session.isAnalysisPhase && session.status !== 'completed' && (
+              <div className="bg-white rounded-2xl p-8 shadow-sm border border-slate-200 text-center">
+                <Loader2 className="h-8 w-8 animate-spin text-blue-600 mx-auto mb-4" />
+                <h3 className="text-lg font-bold text-slate-900 mb-2">Round {session.currentRound} Submitted!</h3>
+                <p className="text-slate-500 mb-6">Your strategy has been submitted. Please wait while other teams finish. The instructor will move the competition forward once all teams have submitted.</p>
+                <div className="inline-flex items-center gap-2 text-amber-600 bg-amber-50 px-4 py-2 rounded-lg border border-amber-100">
+                  <Clock className="h-4 w-4" />
+                  <span className="text-sm font-medium">Waiting for instructor...</span>
+                </div>
+              </div>
+            )}
+
             {!isInstructor && session.status === 'active' && session.isAnalysisPhase && (
               <div className="bg-blue-50 rounded-2xl p-8 shadow-sm border border-blue-200 text-center">
                 <Info className="h-8 w-8 text-blue-600 mx-auto mb-4" />
@@ -208,7 +221,8 @@ export default function SessionView({ user }: { user: UserProfile }) {
               </div>
             )}
 
-            {(!isInstructor && (hasSubmitted || session.status === 'completed')) && (
+            {/* Show results only during analysis phase or when session is completed */}
+            {(!isInstructor && myTeam && (session.isAnalysisPhase || session.status === 'completed')) && (
               <TeamResults 
                 team={myTeam!} 
                 teams={teams}
@@ -480,6 +494,11 @@ function DecisionForm({ session, team, decisions }: { session: Session, team: Te
 
   const round = session.currentRound;
 
+  // Capacity is locked when instructor enables it after round 2
+  const lockedCapacity = (session.isCapacityLocked && round > 2)
+    ? (decisions.find(d => d.teamId === team.id && d.round === 2 && d.submittedAt)?.productionCapacityChoice ?? null)
+    : null;
+
   return (
     <div className="bg-white rounded-2xl p-8 shadow-sm border border-slate-200">
       <h3 className="text-xl font-bold text-slate-900 mb-6">Submit Decisions (Round {round})</h3>
@@ -576,15 +595,25 @@ function DecisionForm({ session, team, decisions }: { session: Session, team: Te
               </div>
               <div>
                 <label className="block text-sm font-medium text-slate-700 mb-1">Production Capacity</label>
-                <select
-                  value={formData.productionCapacityChoice}
-                  onChange={(e) => setFormData({ ...formData, productionCapacityChoice: e.target.value as 'Small' | 'Medium' | 'Large' })}
-                  className="w-full rounded-lg border border-slate-200 px-3 py-2"
-                >
-                  <option value="Small">Small (30,000 units)</option>
-                  <option value="Medium">Medium (50,000 units)</option>
-                  <option value="Large">High (100,000 units)</option>
-                </select>
+                {lockedCapacity ? (
+                  <div className="flex items-center gap-2 w-full rounded-lg border border-amber-200 bg-amber-50 px-3 py-2 text-sm">
+                    <Lock className="h-4 w-4 text-amber-600 flex-shrink-0" />
+                    <span className="font-semibold text-amber-800">
+                      {lockedCapacity === 'Small' ? 'Small (30,000 units)' : lockedCapacity === 'Medium' ? 'Medium (50,000 units)' : 'High (100,000 units)'}
+                    </span>
+                    <span className="text-xs text-amber-600 ml-auto">Locked by instructor</span>
+                  </div>
+                ) : (
+                  <select
+                    value={formData.productionCapacityChoice}
+                    onChange={(e) => setFormData({ ...formData, productionCapacityChoice: e.target.value as 'Small' | 'Medium' | 'Large' })}
+                    className="w-full rounded-lg border border-slate-200 px-3 py-2"
+                  >
+                    <option value="Small">Small (30,000 units)</option>
+                    <option value="Medium">Medium (50,000 units)</option>
+                    <option value="Large">High (100,000 units)</option>
+                  </select>
+                )}
               </div>
               <div className="space-y-4">
                 <div>
@@ -595,7 +624,7 @@ function DecisionForm({ session, team, decisions }: { session: Session, team: Te
                   <input
                     type="range"
                     min="5"
-                    max="25"
+                    max="16"
                     step="1"
                     value={formData.salesForceCount || 5}
                     onChange={(e) => setFormData({ ...formData, salesForceCount: parseInt(e.target.value) })}
@@ -603,7 +632,7 @@ function DecisionForm({ session, team, decisions }: { session: Session, team: Te
                   />
                   <div className="flex justify-between text-[10px] text-slate-400 font-bold uppercase mt-1">
                     <span>5 (min)</span>
-                    <span>25 (max)</span>
+                    <span>16 (max)</span>
                   </div>
                 </div>
               </div>
@@ -1514,6 +1543,14 @@ function MarketContext({ round }: { round: number }) {
 function InstructorControls({ session, teams, decisions, results }: { session: Session, teams: Team[], decisions: Decision[], results: Result[] }) {
   const [loading, setLoading] = useState(false);
 
+  const toggleCapacityLock = async () => {
+    setLoading(true);
+    await updateDoc(doc(db, 'sessions', session.id), {
+      isCapacityLocked: !session.isCapacityLocked
+    });
+    setLoading(false);
+  };
+
   const startSimulation = async () => {
     setLoading(true);
     await updateDoc(doc(db, 'sessions', session.id), { 
@@ -1573,6 +1610,23 @@ function InstructorControls({ session, teams, decisions, results }: { session: S
 
   return (
     <div className="flex items-center gap-2">
+      {/* Capacity lock toggle — visible from round 2 onwards */}
+      {session.currentRound >= 2 && (
+        <button
+          onClick={toggleCapacityLock}
+          disabled={loading}
+          title={session.isCapacityLocked ? 'Unlock production capacity (allow students to change)' : 'Lock production capacity to round 2 choices'}
+          className={cn(
+            "flex items-center gap-1.5 px-3 py-2 rounded-lg text-xs font-semibold transition-all border",
+            session.isCapacityLocked
+              ? "bg-amber-100 text-amber-700 border-amber-200 hover:bg-amber-200"
+              : "bg-slate-100 text-slate-600 border-slate-200 hover:bg-slate-200"
+          )}
+        >
+          {session.isCapacityLocked ? <Lock className="h-3.5 w-3.5" /> : <Unlock className="h-3.5 w-3.5" />}
+          {session.isCapacityLocked ? 'Capacity Locked' : 'Lock Capacity'}
+        </button>
+      )}
       {session.status === 'waiting' && (
         <button
           onClick={startSimulation}
