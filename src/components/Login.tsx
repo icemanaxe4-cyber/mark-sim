@@ -25,11 +25,13 @@ export default function Login() {
       if (isLogin) {
         await signInWithEmailAndPassword(auth, email, password);
       } else {
+        // --- INSTRUCTOR SIGNUP DISABLED ---
+        // Only student signup is allowed. The instructor account is pre-created in the database.
         const { user } = await createUserWithEmailAndPassword(auth, email, password);
         const profile: UserProfile = {
           uid: user.uid,
           email,
-          role,
+          role: 'student', // Force role to student; instructor signup is disabled
           displayName,
         };
         await setDoc(doc(db, 'users', user.uid), profile);
@@ -53,10 +55,12 @@ export default function Login() {
       
       const userDoc = await getDoc(doc(db, 'users', user.uid));
       if (!userDoc.exists()) {
+        // --- INSTRUCTOR SIGNUP DISABLED ---
+        // Only student signup is allowed via Google. The instructor account is pre-created in the database.
         const profile: UserProfile = {
           uid: user.uid,
           email: user.email || '',
-          role: role, // Use the currently selected role
+          role: 'student', // Force role to student; instructor signup is disabled
           displayName: user.displayName || '',
         };
         await setDoc(doc(db, 'users', user.uid), profile);
@@ -111,6 +115,8 @@ export default function Login() {
                       <GraduationCap className="h-5 w-5" />
                       Student
                     </button>
+                    {/* INSTRUCTOR ROLE BUTTON DISABLED — instructor signup is not allowed.
+                        The instructor account is pre-created in the database.
                     <button
                       type="button"
                       onClick={() => setRole('instructor')}
@@ -124,6 +130,7 @@ export default function Login() {
                       <ShieldCheck className="h-5 w-5" />
                       Instructor
                     </button>
+                    */}
                   </div>
                 </div>
 
