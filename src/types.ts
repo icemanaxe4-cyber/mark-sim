@@ -26,6 +26,7 @@ export interface Team {
   sessionId: string;
   name: string;
   members: string[];
+  viewers?: string[];  // UIDs of players in view-only mode (joined with an existing team name)
   createdAt: any;
 }
 

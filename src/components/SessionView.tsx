@@ -3,7 +3,7 @@ import { useParams, useNavigate } from 'react-router-dom';
 import { doc, onSnapshot, collection, query, where, addDoc, serverTimestamp, updateDoc, getDocs, writeBatch } from 'firebase/firestore';
 import { db, auth, handleFirestoreError, OperationType } from '../firebase';
 import { Session, UserProfile, Team, Decision, Result, INDUSTRY_CONTEXT } from '../types';
-import { Loader2, ChevronLeft, Lock, Unlock, Play, BarChart3, Users, AlertCircle, Info, TrendingUp, DollarSign, PieChart, Award, Trophy, ChevronRight, Clock } from 'lucide-react';
+import { Loader2, ChevronLeft, Lock, Unlock, Play, BarChart3, Users, AlertCircle, Info, TrendingUp, DollarSign, PieChart, Award, Trophy, ChevronRight, Clock, Eye } from 'lucide-react';
 import { cn } from '../lib/utils';
 import { motion, AnimatePresence } from 'motion/react';
 import { calculateRoundResults } from '../services/simulationEngine';
@@ -96,7 +96,10 @@ export default function SessionView({ user }: { user: UserProfile }) {
       const teamData = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() } as Team));
       setTeams(teamData);
       
-      const foundMyTeam = teamData.find(t => t.members.includes(user.uid));
+      // Check write-mode membership first, then viewer arrays
+      const foundMyTeam = teamData.find(t => t.members.includes(user.uid))
+        || teamData.find(t => (t.viewers || []).includes(user.uid))
+        || null;
       setMyTeam(foundMyTeam || null);
     }, (error) => {
       handleFirestoreError(error, OperationType.GET, 'teams');
@@ -136,6 +139,10 @@ export default function SessionView({ user }: { user: UserProfile }) {
   }
 
   const isInstructor = user.role === 'instructor';
+  // A viewer is in the team's viewers[] array but NOT in members[]
+  const isViewer = !isInstructor && myTeam
+    ? (myTeam.viewers || []).includes(user.uid) && !myTeam.members.includes(user.uid)
+    : false;
   const currentRoundDecisions = decisions.filter(d => d.round === session.currentRound);
   const hasSubmitted = myTeam ? currentRoundDecisions.some(d => d.teamId === myTeam.id && d.submittedAt) : false;
 
@@ -169,6 +176,12 @@ export default function SessionView({ user }: { user: UserProfile }) {
                 <InstructorControls session={session} teams={teams} decisions={decisions} results={results} />
               </>
             )}
+            {isViewer && (
+              <div className="flex items-center gap-1.5 bg-amber-50 border border-amber-200 text-amber-700 px-3 py-1.5 rounded-lg">
+                <Eye className="h-4 w-4" />
+                <span className="text-sm font-semibold">View Mode</span>
+              </div>
+            )}
             <div className="hidden sm:flex items-center gap-2 bg-blue-50 px-3 py-1.5 rounded-lg border border-blue-100">
               <Users className="h-4 w-4 text-blue-600" />
               <span className="text-sm font-semibold text-blue-700">{teams.length} Teams</span>
@@ -192,16 +205,22 @@ export default function SessionView({ user }: { user: UserProfile }) {
         <div className="grid grid-cols-1 lg:grid-cols-12 gap-8 mt-8">
           {/* Main Content Area */}
           <div className="lg:col-span-8 space-y-8">
-            {session.currentRound === 1 && !isInstructor && !hasSubmitted && !session.isAnalysisPhase && (
+            {session.currentRound === 1 && !isInstructor && !hasSubmitted && !session.isAnalysisPhase && !isViewer && (
               <CompetitionBenchmark totalMarketSize={session.totalMarketSize} />
             )}
 
-            {!isInstructor && session.status === 'active' && !hasSubmitted && !session.isAnalysisPhase && (
+            {/* Writer mode: show the editable decision form */}
+            {!isInstructor && !isViewer && session.status === 'active' && !hasSubmitted && !session.isAnalysisPhase && (
               <DecisionForm session={session} team={myTeam!} decisions={decisions} />
             )}
 
+            {/* Viewer mode: show live read-only mirror of the writer's decisions */}
+            {!isInstructor && isViewer && session.status === 'active' && !session.isAnalysisPhase && myTeam && (
+              <ViewerDecisionPanel session={session} team={myTeam} decisions={decisions} />
+            )}
+
             {/* Waiting screen: submitted but analysis hasn't started yet */}
-            {!isInstructor && hasSubmitted && !session.isAnalysisPhase && session.status !== 'completed' && (
+            {!isInstructor && !isViewer && hasSubmitted && !session.isAnalysisPhase && session.status !== 'completed' && (
               <div className="bg-white rounded-2xl p-8 shadow-sm border border-slate-200 text-center">
                 <Loader2 className="h-8 w-8 animate-spin text-blue-600 mx-auto mb-4" />
                 <h3 className="text-lg font-bold text-slate-900 mb-2">Round {session.currentRound} Submitted!</h3>
@@ -333,6 +352,131 @@ function RoundInfoBanner({ round }: { round: number }) {
         </div>
       </div>
     </motion.div>
+  );
+}
+
+// ─── Viewer Decision Panel ──────────────────────────────────────────────────
+// Read-only mirror of the writer's live draft, updated in real time via props
+function ViewerDecisionPanel({ session, team, decisions }: { session: Session; team: Team; decisions: Decision[] }) {
+  const round = session.currentRound;
+
+  // Get the writer's current-round decision (draft or submitted)
+  const writerDecision = decisions
+    .filter(d => d.teamId === team.id && d.round === round)
+    .sort((a, b) => (b as any).updatedAt?.seconds - (a as any).updatedAt?.seconds)[0] || null;
+
+  const isSubmitted = writerDecision?.submittedAt != null;
+
+  const Field = ({ label, value }: { label: string; value: React.ReactNode }) => (
+    <div className="flex flex-col gap-0.5">
+      <span className="text-xs font-semibold text-slate-400 uppercase tracking-wide">{label}</span>
+      <span className="text-sm font-semibold text-slate-800 bg-slate-50 border border-slate-200 rounded-lg px-3 py-2">{value}</span>
+    </div>
+  );
+
+  return (
+    <div className="bg-white rounded-2xl p-8 shadow-sm border-2 border-amber-200">
+      {/* Header banner */}
+      <div className="flex items-center justify-between mb-6">
+        <div className="flex items-center gap-3">
+          <div className="bg-amber-100 p-2 rounded-xl">
+            <Eye className="h-5 w-5 text-amber-600" />
+          </div>
+          <div>
+            <h3 className="text-lg font-bold text-slate-900">Viewing Team Decisions — Round {round}</h3>
+            <p className="text-xs text-amber-600 font-medium">You are in view-only mode. This panel updates live.</p>
+          </div>
+        </div>
+        <div className={cn(
+          "flex items-center gap-1.5 px-3 py-1.5 rounded-full text-xs font-bold border",
+          isSubmitted
+            ? "bg-green-50 border-green-200 text-green-700"
+            : writerDecision
+            ? "bg-blue-50 border-blue-200 text-blue-700 animate-pulse"
+            : "bg-slate-50 border-slate-200 text-slate-500"
+        )}>
+          <span className={cn(
+            "w-2 h-2 rounded-full",
+            isSubmitted ? "bg-green-500" : writerDecision ? "bg-blue-500" : "bg-slate-400"
+          )} />
+          {isSubmitted ? "Submitted" : writerDecision ? "Draft (live)" : "No draft yet"}
+        </div>
+      </div>
+
+      {!writerDecision ? (
+        <div className="text-center py-10 text-slate-400">
+          <Clock className="h-8 w-8 mx-auto mb-3 opacity-40" />
+          <p className="text-sm">The writer hasn't started their draft for Round {round} yet.</p>
+          <p className="text-xs mt-1">This panel will update automatically when they begin.</p>
+        </div>
+      ) : (
+        <div className="space-y-6">
+          {/* Segment Allocation */}
+          <div className="space-y-3">
+            <h4 className="font-semibold text-slate-700 flex items-center gap-2 text-sm">
+              <PieChart className="h-4 w-4 text-blue-500" /> Segment Allocation
+            </h4>
+            <div className="grid grid-cols-3 gap-3">
+              {Object.entries(writerDecision.segmentAllocation || {}).map(([k, v]) => (
+                <Field key={k} label={k} value={`${v}%`} />
+              ))}
+            </div>
+          </div>
+
+          {/* Positioning */}
+          <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+            <Field label="Positioning" value={writerDecision.positioning} />
+            {round >= 2 && <Field label="Product Strategy" value={writerDecision.productStrategy} />}
+            {round >= 2 && <Field label="Sourcing" value={writerDecision.sourcing} />}
+            {round >= 2 && <Field label="Production Capacity" value={writerDecision.productionCapacityChoice} />}
+            {round >= 2 && <Field label="Pricing (₹/m)" value={`₹${writerDecision.pricing}`} />}
+            {round >= 2 && <Field label="Sales Force" value={`${writerDecision.salesForceCount} people @ ₹${((writerDecision.salesForceSalary || 0) / 100000).toFixed(1)}L/yr`} />}
+          </div>
+
+          {/* Distribution Channel */}
+          {round >= 2 && (
+            <div className="space-y-3">
+              <h4 className="font-semibold text-slate-700 text-sm">Distribution Channel</h4>
+              <div className="grid grid-cols-3 gap-3">
+                {Object.entries(writerDecision.distributionChannel || {}).map(([k, v]) => (
+                  <Field key={k} label={k} value={`${v}%`} />
+                ))}
+              </div>
+            </div>
+          )}
+
+          {/* Promotion Allocation */}
+          {round >= 2 && (
+            <div className="space-y-3">
+              <h4 className="font-semibold text-slate-700 text-sm">Promotion Allocation</h4>
+              <div className="grid grid-cols-2 gap-3">
+                {Object.entries(writerDecision.promotionAllocation || {}).map(([k, v]) => (
+                  <Field key={k} label={k.replace(/([A-Z])/g, ' $1')} value={`₹${((v as number) / 100000).toFixed(0)}L`} />
+                ))}
+              </div>
+            </div>
+          )}
+
+          {/* Overall Strategy */}
+          <div className="space-y-1">
+            <span className="text-xs font-semibold text-slate-400 uppercase tracking-wide">Overall Strategy</span>
+            <div className="bg-slate-50 border border-slate-200 rounded-lg px-4 py-3 text-sm text-slate-800 whitespace-pre-wrap min-h-[3rem]">
+              {writerDecision.overallStrategy || <span className="italic text-slate-400">Not entered yet</span>}
+            </div>
+          </div>
+
+          {/* Assumptions (Round 1 only) */}
+          {round === 1 && (
+            <div className="space-y-1">
+              <span className="text-xs font-semibold text-slate-400 uppercase tracking-wide">Assumptions</span>
+              <div className="bg-slate-50 border border-slate-200 rounded-lg px-4 py-3 text-sm text-slate-800 whitespace-pre-wrap min-h-[3rem]">
+                {writerDecision.assumptions || <span className="italic text-slate-400">Not entered yet</span>}
+              </div>
+            </div>
+          )}
+        </div>
+      )}
+    </div>
   );
 }
 

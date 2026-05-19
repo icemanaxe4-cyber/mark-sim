@@ -1,8 +1,8 @@
 import React, { useState, useEffect } from 'react';
-import { collection, query, where, onSnapshot, addDoc, serverTimestamp, getDocs, doc, getDoc } from 'firebase/firestore';
+import { collection, query, where, onSnapshot, addDoc, serverTimestamp, getDocs, doc, getDoc, updateDoc, arrayUnion } from 'firebase/firestore';
 import { db, auth, handleFirestoreError, OperationType } from '../firebase';
 import { Session, UserProfile, Team } from '../types';
-import { Plus, LogOut, Loader2, Search, Users, BarChart3, ChevronRight } from 'lucide-react';
+import { Plus, LogOut, Loader2, Search, Users, BarChart3, ChevronRight, Eye, PenLine } from 'lucide-react';
 import { cn } from '../lib/utils';
 import { motion, AnimatePresence } from 'motion/react';
 import { useNavigate } from 'react-router-dom';
@@ -12,32 +12,65 @@ export default function StudentDashboard({ user }: { user: UserProfile }) {
   const [teamName, setTeamName] = useState('');
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState('');
-  const [myTeams, setMyTeams] = useState<(Team & { sessionName: string })[]>([]);
+  const [myTeams, setMyTeams] = useState<(Team & { sessionName: string; isViewer: boolean })[]>([]);
   const navigate = useNavigate();
 
   useEffect(() => {
-    // Find all teams where this user is a member
-    const q = query(collection(db, 'teams'), where('members', 'array-contains', user.uid));
-    const unsubscribe = onSnapshot(q, async (snapshot) => {
+    // Find all teams where this user is a member OR a viewer
+    const memberQuery = query(collection(db, 'teams'), where('members', 'array-contains', user.uid));
+    const viewerQuery = query(collection(db, 'teams'), where('viewers', 'array-contains', user.uid));
+
+    const processSnapshot = async (memberDocs: any[], viewerDocs: any[]) => {
       try {
-        const teamData = await Promise.all(snapshot.docs.map(async (teamDoc) => {
+        const allDocs = [
+          ...memberDocs.map(d => ({ doc: d, isViewer: false })),
+          ...viewerDocs.map(d => ({ doc: d, isViewer: true })),
+        ];
+        // Deduplicate by team ID
+        const seen = new Set<string>();
+        const unique = allDocs.filter(({ doc }) => {
+          if (seen.has(doc.id)) return false;
+          seen.add(doc.id);
+          return true;
+        });
+
+        const teamData = await Promise.all(unique.map(async ({ doc: teamDoc, isViewer }) => {
           const data = teamDoc.data() as Team;
           const sessionDoc = await getDoc(doc(db, 'sessions', data.sessionId));
           return { 
             id: teamDoc.id, 
             ...data, 
-            sessionName: sessionDoc.exists() ? sessionDoc.data().name : 'Unknown Session' 
+            sessionName: sessionDoc.exists() ? sessionDoc.data().name : 'Unknown Session',
+            isViewer,
           };
         }));
         setMyTeams(teamData.sort((a, b) => b.createdAt?.seconds - a.createdAt?.seconds));
       } catch (err) {
         handleFirestoreError(err, OperationType.GET, 'teams');
       }
-    }, (error) => {
-      handleFirestoreError(error, OperationType.GET, 'teams');
-    });
+    };
 
-    return () => unsubscribe();
+    let memberDocs: any[] = [];
+    let viewerDocs: any[] = [];
+    let memberReady = false;
+    let viewerReady = false;
+
+    const unsubMember = onSnapshot(memberQuery, (snapshot) => {
+      memberDocs = snapshot.docs;
+      memberReady = true;
+      if (viewerReady) processSnapshot(memberDocs, viewerDocs);
+    }, (error) => handleFirestoreError(error, OperationType.GET, 'teams'));
+
+    const unsubViewer = onSnapshot(viewerQuery, (snapshot) => {
+      viewerDocs = snapshot.docs;
+      viewerReady = true;
+      if (memberReady) processSnapshot(memberDocs, viewerDocs);
+    }, (error) => handleFirestoreError(error, OperationType.GET, 'teams'));
+
+    return () => {
+      unsubMember();
+      unsubViewer();
+    };
   }, [user.uid]);
 
   const handleJoinSession = async (e: React.FormEvent) => {
@@ -61,27 +94,66 @@ export default function StudentDashboard({ user }: { user: UserProfile }) {
       const sessionDoc = sessionSnapshot.docs[0];
       const sessionId = sessionDoc.id;
 
-      // 2. Check if user is already in a team for this session
-      const teamQuery = query(
+      // 2. Check if user is already in a team (as member or viewer) for this session
+      const memberQuery = query(
         collection(db, 'teams'), 
         where('sessionId', '==', sessionId),
         where('members', 'array-contains', user.uid)
       );
-      const teamSnapshot = await getDocs(teamQuery);
-
-      if (!teamSnapshot.empty) {
+      const memberSnapshot = await getDocs(memberQuery);
+      if (!memberSnapshot.empty) {
         setError('You are already in a team for this session.');
         setLoading(false);
         return;
       }
 
-      // 3. Create new team
-      await addDoc(collection(db, 'teams'), {
-        name: teamName,
-        sessionId,
-        members: [user.uid],
-        createdAt: serverTimestamp(),
-      });
+      // Also check viewer arrays
+      const viewerQuery = query(
+        collection(db, 'teams'),
+        where('sessionId', '==', sessionId),
+        where('viewers', 'array-contains', user.uid)
+      );
+      const viewerSnapshot = await getDocs(viewerQuery);
+      if (!viewerSnapshot.empty) {
+        setError('You are already watching a team in this session.');
+        setLoading(false);
+        return;
+      }
+
+      // 3. Check if a team with this name already exists in the session
+      const nameQuery = query(
+        collection(db, 'teams'),
+        where('sessionId', '==', sessionId),
+        where('name', '==', teamName.trim())
+      );
+      const nameSnapshot = await getDocs(nameQuery);
+
+      if (!nameSnapshot.empty) {
+        // Team name exists → join as viewer
+        const existingTeam = nameSnapshot.docs[0];
+        const existingData = existingTeam.data();
+        const currentViewers: string[] = existingData.viewers || [];
+
+        // Enforce max 3 viewers (since 1 write + 3 view = 4 members per team)
+        if (currentViewers.length >= 3) {
+          setError('This team already has the maximum number of viewers (3). Each team supports 1 writer + 3 viewers.');
+          setLoading(false);
+          return;
+        }
+
+        await updateDoc(doc(db, 'teams', existingTeam.id), {
+          viewers: arrayUnion(user.uid),
+        });
+      } else {
+        // Team name does not exist → create new team (write mode)
+        await addDoc(collection(db, 'teams'), {
+          name: teamName.trim(),
+          sessionId,
+          members: [user.uid],
+          viewers: [],
+          createdAt: serverTimestamp(),
+        });
+      }
 
       setJoinCode('');
       setTeamName('');
@@ -172,6 +244,9 @@ export default function StudentDashboard({ user }: { user: UserProfile }) {
                   {loading ? <Loader2 className="h-5 w-5 animate-spin" /> : <Plus className="h-5 w-5" />}
                   Join & Create Team
                 </button>
+                <p className="text-xs text-slate-400 text-center">
+                  Entering an existing team name will add you as a <span className="font-semibold text-amber-600">viewer</span> (read-only).
+                </p>
               </form>
             </div>
           </div>
@@ -194,7 +269,12 @@ export default function StudentDashboard({ user }: { user: UserProfile }) {
                     initial={{ opacity: 0, scale: 0.95 }}
                     animate={{ opacity: 1, scale: 1 }}
                     exit={{ opacity: 0, scale: 0.95 }}
-                    className="bg-white rounded-2xl p-6 shadow-sm border border-slate-200 hover:border-blue-300 transition-all cursor-pointer group"
+                    className={cn(
+                      "bg-white rounded-2xl p-6 shadow-sm border transition-all cursor-pointer group",
+                      team.isViewer
+                        ? "border-amber-200 hover:border-amber-400"
+                        : "border-slate-200 hover:border-blue-300"
+                    )}
                     onClick={() => navigate(`/session/${team.sessionId}`)}
                   >
                     <div className="flex items-center justify-between">
@@ -207,6 +287,15 @@ export default function StudentDashboard({ user }: { user: UserProfile }) {
                             <Users className="h-4 w-4" />
                             Team: <span className="font-semibold text-blue-600">{team.name}</span>
                           </span>
+                          {team.isViewer ? (
+                            <span className="flex items-center gap-1 text-xs font-bold text-amber-700 bg-amber-50 border border-amber-200 px-2 py-0.5 rounded-full">
+                              <Eye className="h-3 w-3" /> View Mode
+                            </span>
+                          ) : (
+                            <span className="flex items-center gap-1 text-xs font-bold text-green-700 bg-green-50 border border-green-200 px-2 py-0.5 rounded-full">
+                              <PenLine className="h-3 w-3" /> Write Mode
+                            </span>
+                          )}
                         </div>
                       </div>
                       <ChevronRight className="h-5 w-5 text-slate-400 group-hover:text-blue-500 transition-all" />
