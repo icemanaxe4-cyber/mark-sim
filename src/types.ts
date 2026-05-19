@@ -77,7 +77,8 @@ export interface Result {
   volume: number;
   revenue: number;
   profit: number;
-  marketShare: number;
+  marketShare: number;        // Potential demand capture (score-based share of forecasted demand)
+  actualMarketShare?: number; // Actual units sold / total market demand (optional – backward compatible)
   customerSatisfaction: number;
   rank: number;
   // New metrics

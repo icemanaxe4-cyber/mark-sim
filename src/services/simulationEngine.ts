@@ -17,11 +17,11 @@ export function calculateRoundResults(
       const p = d.promotionAllocation;
       return sum + (p.events || 0) + (p.socialMedia || 0) + (p.tradeMagazines || 0) + (p.influencerEvents || 0);
     }, 0);
-  
+
   const avgPromPerTeam = teams.length > 0 ? totalIndustryProm / teams.length : 0;
   // Marketing grows the overall category awareness
   const normalizedProm = Math.max(20000, avgPromPerTeam * 0.7);
-  const demandStimulus = Math.min(1.4, 1 + Math.pow(normalizedProm / 6000000, 0.7) * 0.35); 
+  const demandStimulus = Math.min(1.4, 1 + Math.pow(normalizedProm / 6000000, 0.7) * 0.35);
   let totalMarketDemand = baseMarketDemand * demandStimulus;
 
   // 2. Stainless Steel Addressable Market (CRITICAL)
@@ -45,7 +45,7 @@ export function calculateRoundResults(
   // Calculate scores for each team
   const teamScores = teams.map((team) => {
     const decision = decisions.find(d => d.teamId === team.id);
-    
+
     if (!decision) {
       return {
         teamId: team.id,
@@ -94,7 +94,7 @@ export function calculateRoundResults(
     // Count: 5-25, Salary: 3L-16L (300,000 - 1,600,000)
     const sfCount = decision.salesForceCount || 5;
     const sfSalary = decision.salesForceSalary || 500000;
-    
+
     let salesForceCost = sfCount * sfSalary;
     // Cap verification (though UI should handle it)
     if (salesForceCost > 8000000) {
@@ -106,7 +106,7 @@ export function calculateRoundResults(
     const skillMultiplier = 0.5 + ((sfSalary - 300000) / 1300000) * 1.2;
     // Reach tied to count (5 = 0.85, 25 = 1.25)
     const reachMultiplier = 0.85 + ((sfCount - 5) / 20) * 0.4;
-    
+
     let salesForceEfficiency = skillMultiplier * reachMultiplier;
     let b2bBonus = 1.0;
     let dealerBonus = 1.0;
@@ -135,7 +135,7 @@ export function calculateRoundResults(
 
     switch (decision.productStrategy) {
       case 'Premium (high grade steel)':
-        productMultiplier = 1.3; 
+        productMultiplier = 1.3;
         costMultiplier = 1.3;
         satisfactionBonus += 1.5;
         if (decision.sourcing === 'Domestic') {
@@ -153,7 +153,7 @@ export function calculateRoundResults(
         satisfactionBonus -= 1.2;
         break;
       case 'Product + Service (site supervision)':
-        productMultiplier = 1.55; 
+        productMultiplier = 1.55;
         costMultiplier = 1.5;
         satisfactionBonus += 2.5;
         break;
@@ -164,8 +164,8 @@ export function calculateRoundResults(
     let sourcingCostMult = 1.0;
 
     if (decision.sourcing === 'Imported') {
-      sourcingScoreMult = 1.1; 
-      sourcingCostMult = round >= 4 ? 1.6 : 1.25; 
+      sourcingScoreMult = 1.1;
+      sourcingCostMult = round >= 4 ? 1.6 : 1.25;
     } else {
       // Domestic advantage in Government
       sourcingScoreMult = 1 + (segAlloc.government * 0.002);
@@ -178,17 +178,17 @@ export function calculateRoundResults(
     const resiFit = (chan.influencers / 100) * 1.7 + (chan.dealers / 100) * 0.3;
     const commFit = (chan.dealers / 100) * 1.25 + (chan.influencers / 100) * 0.4;
     const govtFit = (chan.direct / 100) * 1.2;
-    
+
     // Apply sales force bonuses to channel fit
     const adjustedResiFit = (chan.influencers / 100) * 1.7 * b2bBonus + (chan.dealers / 100) * 0.3 * dealerBonus;
     const adjustedCommFit = (chan.dealers / 100) * 1.25 * dealerBonus + (chan.influencers / 100) * 0.4 * b2bBonus;
     const adjustedGovtFit = (chan.direct / 100) * 1.2 * b2bBonus;
 
-    const rawFit = (segAlloc.residential / 100) * adjustedResiFit + 
-                   (segAlloc.commercial / 100) * adjustedCommFit + 
-                   (segAlloc.government / 100) * adjustedGovtFit;
+    const rawFit = (segAlloc.residential / 100) * adjustedResiFit +
+      (segAlloc.commercial / 100) * adjustedCommFit +
+      (segAlloc.government / 100) * adjustedGovtFit;
     let channelSegmentFit = 0.9 + (rawFit * 0.3); // Range 0.9 to 1.2
-    
+
     if (chan.influencers > 0) {
       channelSegmentFit *= (1 + (chan.influencers / 100) * 0.08);
     }
@@ -196,7 +196,7 @@ export function calculateRoundResults(
     // E. Promotion Effectiveness (Awareness vs Conversion)
     const prom = decision.promotionAllocation || { events: 0, socialMedia: 0, tradeMagazines: 0, influencerEvents: 0 };
     const totalPromRaw = (prom.events || 0) + (prom.socialMedia || 0) + (prom.tradeMagazines || 0) + (prom.influencerEvents || 0);
-    
+
     // Hard Budget Cap Enforcement
     const effectiveProm = Math.min(totalPromRaw, INDUSTRY_CONTEXT.maxPromotionBudget);
     const promotionCapped = totalPromRaw > INDUSTRY_CONTEXT.maxPromotionBudget;
@@ -207,7 +207,7 @@ export function calculateRoundResults(
     let finalPromEffect = 0.15; // Minimum 15% effectiveness
     const diminishingReturnThreshold = 5000000;
     const cappedProm = Math.min(effectiveProm, diminishingReturnThreshold);
-    const promReach = Math.min(1.2, Math.pow(cappedProm, 0.45) / 300); 
+    const promReach = Math.min(1.2, Math.pow(cappedProm, 0.45) / 300);
 
     if (effectiveProm > 0) {
       const awareness = (prom.socialMedia || 0) * 0.6 + (prom.tradeMagazines || 0) * 0.8;
@@ -215,7 +215,7 @@ export function calculateRoundResults(
       // Note: we use totalPromRaw for the ratio to penalize over-spending even if it's capped in effect
       const calculatedPromEffect = ((awareness * 0.4 + conversion * 0.6) / Math.max(1, cappedProm)) * promReach;
       finalPromEffect = Math.max(0.15, calculatedPromEffect);
-      
+
       if (effectiveProm > diminishingReturnThreshold) {
         finalPromEffect *= 0.7; // inefficiency penalty
         weaknesses.push('Promotion budget facing diminishing returns (> 50L)');
@@ -238,11 +238,11 @@ export function calculateRoundResults(
     if (decision.positioning.includes('Quality')) adoptionBarrier += 0.2;
     if (decision.productStrategy.includes('Premium')) adoptionBarrier += 0.15;
     if (decision.productStrategy.includes('Service')) adoptionBarrier += 0.3;
-    
+
     if (segAlloc.residential > 50) adoptionBarrier -= 0.05;
     if (segAlloc.commercial > 50) adoptionBarrier += 0.05;
     if (segAlloc.government > 50) adoptionBarrier -= 0.1;
-    
+
     if (round === 4 && decision.sourcing === 'Imported') adoptionBarrier *= 1.2;
     if (round === 5) adoptionBarrier += 0.18;
     adoptionBarrier = Math.min(0.85, Math.max(0.35, adoptionBarrier));
@@ -250,14 +250,14 @@ export function calculateRoundResults(
     // G. Price Sensitivity (Improved Impact)
     let priceFactor = 1.0;
     if (price > 800) {
-      priceFactor = Math.max(0.05, 1 - (price - 800) / 150); 
+      priceFactor = Math.max(0.05, 1 - (price - 800) / 150);
       if (price > 900) priceFactor *= 0.6;
       weaknesses.push('Pricing is significantly above market tolerance');
     } else if (price < 450) {
-      priceFactor = 1.15 - (450 - price) / 600; 
+      priceFactor = 1.15 - (450 - price) / 600;
       strengths.push('Aggressive competitive pricing');
     } else {
-      priceFactor = 1.1 - Math.abs(price - 550) / 600; 
+      priceFactor = 1.1 - Math.abs(price - 550) / 600;
     }
 
     // Round 4+ External Event Impact on Imported
@@ -287,7 +287,7 @@ export function calculateRoundResults(
     // I. Government Entry Barrier
     let govtBarrier = 0.55;
     let trustFactor = 1.0;
-    
+
     const lastRoundResults = previousResults.filter(r => r.round === round - 1);
     const prevResult = lastRoundResults.find(r => r.teamId === team.id);
 
@@ -295,10 +295,10 @@ export function calculateRoundResults(
     govtBarrier *= (1 - govtIntensity * 0.2);
 
     if (segAlloc.government > 30) {
-      if (decision.sourcing === 'Domestic') govtBarrier *= 0.8; 
+      if (decision.sourcing === 'Domestic') govtBarrier *= 0.8;
       govtBarrier = Math.min(0.8, govtBarrier);
       if (decision.sourcing === 'Imported') trustFactor = 0.75;
-      
+
       if (segAlloc.government > 50 && decision.sourcing === 'Imported') {
         govtBarrier *= 0.8;
       }
@@ -325,7 +325,7 @@ export function calculateRoundResults(
     // M. Experience & Satisfaction Effects
     let experienceBoost = 1.0;
     if (prevResult) {
-      experienceBoost = 1 
+      experienceBoost = 1
         + Math.min(0.06, prevResult.marketShare * 0.06)
         + ((prevResult.customerSatisfaction - 5) * 0.012);
       if (prevResult.marketShare < 0.05) {
@@ -373,26 +373,26 @@ export function calculateRoundResults(
     let combinedCompetition = cpvcPressure * foreignPressure;
     combinedCompetition = 0.85 + (combinedCompetition - 0.85) * 0.7;
 
-    let finalScore = productMultiplier * 
-                       sourcingScoreMult * 
-                       segmentGrowth *
-                       channelSegmentFit * 
-                       finalPromEffect * 
-                       adoptionBarrier * 
-                       priceFactor *
-                       pricePosAlignment * 
-                       govtBarrier * 
-                       trustFactor *
-                       focusMultiplier *
-                       channelFocusMultiplier *
-                       serviceFit *
-                       premiumLimit *
-                       experienceBoost *
-                       competitionFactor *
-                       brandTrust *
-                       combinedCompetition *
-                       salesForceEfficiency * // Apply sales force efficiency
-                       randomness;
+    let finalScore = productMultiplier *
+      sourcingScoreMult *
+      segmentGrowth *
+      channelSegmentFit *
+      finalPromEffect *
+      adoptionBarrier *
+      priceFactor *
+      pricePosAlignment *
+      govtBarrier *
+      trustFactor *
+      focusMultiplier *
+      channelFocusMultiplier *
+      serviceFit *
+      premiumLimit *
+      experienceBoost *
+      competitionFactor *
+      brandTrust *
+      combinedCompetition *
+      salesForceEfficiency * // Apply sales force efficiency
+      randomness;
 
     finalScore = Math.pow(finalScore, 0.85);
     if (finalScore < 0.02) finalScore *= 0.5;
@@ -437,7 +437,7 @@ export function calculateRoundResults(
   // Calculate market share and metrics
   teamScores.forEach((t) => {
     const marketShare = totalScore > 0 ? t.score / totalScore : 1 / teamScores.length;
-    
+
     if (round === 1) {
       results.push({
         teamId: t.teamId,
@@ -447,6 +447,7 @@ export function calculateRoundResults(
         revenue: 0,
         profit: 0,
         marketShare: marketShare,
+        actualMarketShare: 0, // No actual sales in round 1
         customerSatisfaction: Math.min(10, Math.max(1, 5 + t.satisfactionBonus)),
         rank: 0,
         forecastedDemand: 0,
@@ -474,17 +475,17 @@ export function calculateRoundResults(
     const potentialVolume = totalMarketDemand * marketShare;
     const volume = Math.min(capacity, potentialVolume);
     const lostSales = Math.max(0, potentialVolume - capacity);
-    
+
     if (lostSales > 0) {
       t.weaknesses.push(`Lost ${Math.round(lostSales).toLocaleString()} units due to capacity constraints`);
     }
 
     const revenue = volume * t.pricing;
-    
+
     // Cost calculation
     let unitCost = 350 * t.costMultiplier;
     const utilization = volume / capacity;
-    
+
     // Utilization penalties/bonuses
     if (utilization < 0.5) {
       unitCost *= 1.15; // Underutilization penalty
@@ -512,9 +513,14 @@ export function calculateRoundResults(
     // Enhanced Satisfaction Logic
     let priceFairness = 1.0;
     if (t.pricing > 900) priceFairness = 0.5;
-    if (t.pricing < 400) priceFairness = 0.75; 
+    if (t.pricing < 400) priceFairness = 0.75;
 
     const satisfaction = Math.min(10, Math.max(1, (4 + t.productMultiplier * 2 + t.serviceFit * 2) * priceFairness + t.satisfactionBonus));
+
+    // Actual market share = units actually sold / total market demand
+    const actualMarketShare = totalMarketDemand > 0
+      ? Math.min(1, Math.round(volume) / totalMarketDemand)
+      : 0;
 
     results.push({
       teamId: t.teamId,
@@ -524,6 +530,7 @@ export function calculateRoundResults(
       revenue: Math.round(revenue),
       profit: Math.round(profit),
       marketShare: marketShare,
+      actualMarketShare: parseFloat(actualMarketShare.toFixed(4)),
       customerSatisfaction: parseFloat(satisfaction.toFixed(1)),
       rank: 0,
       forecastedDemand: Math.round(potentialVolume),

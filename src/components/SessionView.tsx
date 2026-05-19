@@ -42,12 +42,12 @@ export default function SessionView({ user }: { user: UserProfile }) {
   const exportToPDF = async () => {
     const element = document.getElementById('session-content');
     if (!element) return;
-    
+
     setLoading(true);
     try {
       // Ensure we are at the top of the page for capture
       window.scrollTo(0, 0);
-      
+
       const canvas = await html2canvas(element, {
         scale: 2,
         useCORS: true,
@@ -56,12 +56,12 @@ export default function SessionView({ user }: { user: UserProfile }) {
         windowWidth: element.scrollWidth,
         windowHeight: element.scrollHeight
       });
-      
+
       const imgData = canvas.toDataURL('image/jpeg', 0.95);
       const pdf = new jsPDF('p', 'mm', 'a4');
       const pdfWidth = pdf.internal.pageSize.getWidth();
       const pdfHeight = (canvas.height * pdfWidth) / canvas.width;
-      
+
       // If content is longer than one page, we might need to handle it, 
       // but for now let's try to fit it or at least fix the basic failure.
       pdf.addImage(imgData, 'JPEG', 0, 0, pdfWidth, pdfHeight);
@@ -80,8 +80,8 @@ export default function SessionView({ user }: { user: UserProfile }) {
     // 1. Listen to session
     const sessionUnsubscribe = onSnapshot(doc(db, 'sessions', sessionId), (doc) => {
       if (doc.exists()) {
-        setSession({ 
-          id: doc.id, 
+        setSession({
+          id: doc.id,
           ...doc.data(),
           isAnalysisPhase: doc.data()?.isAnalysisPhase ?? false
         } as Session);
@@ -95,7 +95,7 @@ export default function SessionView({ user }: { user: UserProfile }) {
     const teamsUnsubscribe = onSnapshot(teamsQuery, (snapshot) => {
       const teamData = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() } as Team));
       setTeams(teamData);
-      
+
       // Check write-mode membership first, then viewer arrays
       const foundMyTeam = teamData.find(t => t.members.includes(user.uid))
         || teamData.find(t => (t.viewers || []).includes(user.uid))
@@ -163,7 +163,7 @@ export default function SessionView({ user }: { user: UserProfile }) {
               <p className="text-xs text-slate-500">Round {session.currentRound} of 6 • {session.status}</p>
             </div>
           </div>
-          
+
           <div className="flex items-center gap-3">
             {isInstructor && (
               <>
@@ -190,7 +190,7 @@ export default function SessionView({ user }: { user: UserProfile }) {
               <div className="flex items-center gap-2 bg-indigo-50 px-3 py-1.5 rounded-lg border border-indigo-100">
                 <PieChart className="h-4 w-4 text-indigo-600" />
                 <span className="text-sm font-bold text-indigo-700">
-                  MS: {(results.filter(r => r.teamId === myTeam.id).sort((a, b) => b.round - a.round)[0]?.marketShare * 100).toFixed(1)}%
+                  PDC: {(results.filter(r => r.teamId === myTeam.id).sort((a, b) => b.round - a.round)[0]?.marketShare * 100).toFixed(1)}%
                 </span>
               </div>
             )}
@@ -242,12 +242,12 @@ export default function SessionView({ user }: { user: UserProfile }) {
 
             {/* Show results only during analysis phase or when session is completed */}
             {(!isInstructor && myTeam && (session.isAnalysisPhase || session.status === 'completed')) && (
-              <TeamResults 
-                team={myTeam!} 
+              <TeamResults
+                team={myTeam!}
                 teams={teams}
-                results={results} 
-                round={session.currentRound} 
-                decisions={decisions} 
+                results={results}
+                round={session.currentRound}
+                decisions={decisions}
                 isAnalysisPhase={session.isAnalysisPhase}
                 sessionStatus={session.status}
               />
@@ -267,7 +267,7 @@ export default function SessionView({ user }: { user: UserProfile }) {
                   <div className="space-y-4">
                     <div className="grid grid-cols-2 gap-4">
                       <div className="p-3 bg-blue-50 rounded-xl">
-                        <p className="text-xs text-blue-600 font-semibold uppercase">Market Share</p>
+                        <p className="text-xs text-blue-600 font-semibold uppercase">Potential Demand Capture</p>
                         <p className="text-xl font-bold text-blue-900">
                           {(results.find(r => r.teamId === myTeam?.id && r.round === session.currentRound - 1)?.marketShare! * 100).toFixed(1)}%
                         </p>
@@ -308,36 +308,36 @@ export default function SessionView({ user }: { user: UserProfile }) {
 
 function RoundInfoBanner({ round }: { round: number }) {
   const roundInfo = [
-    { 
-      title: "Strategy Foundation", 
-      desc: "Choose a segment you would like to focus upon and positioning you would like to adopt. State your assumptions." 
+    {
+      title: "Strategy Foundation",
+      desc: "Choose a segment you would like to focus upon and positioning you would like to adopt. State your assumptions."
     },
-    { 
-      title: "Go-To-Market Strategy", 
-      desc: "Choose your product, price, channel, and promotion mix to establish market presence." 
+    {
+      title: "Go-To-Market Strategy",
+      desc: "Choose your product, price, channel, and promotion mix to establish market presence."
     },
-    { 
-      title: "Optimization", 
-      desc: "Perform one key correction in your strategy to generate more volume and increase penetration." 
+    {
+      title: "Optimization",
+      desc: "Perform one key correction in your strategy to generate more volume and increase penetration."
     },
-    { 
-      title: "Policy Shock", 
-      desc: "Govt Tax Alert: 25% duty on imported steel. Final prices for imported goods will rise by ~35%." 
+    {
+      title: "Policy Shock",
+      desc: "Govt Tax Alert: 25% duty on imported steel. Final prices for imported goods will rise by ~35%."
     },
-    { 
-      title: "Market Disruption", 
-      desc: "Health Alert: BIS declares 50% of CPVC pipes unhealthy. Demand shift to SS expected. NOTE: High import duties on steel continue to keep imported goods prices high." 
+    {
+      title: "Market Disruption",
+      desc: "Health Alert: BIS declares 50% of CPVC pipes unhealthy. Demand shift to SS expected. NOTE: High import duties on steel continue to keep imported goods prices high."
     },
-    { 
-      title: "New Competition", 
-      desc: "A new domestic entrant has launched with 1 Lakh (100,000 units) capacity, targeting the mass market. Overall SS penetration is now at peak (25%)." 
+    {
+      title: "New Competition",
+      desc: "A new domestic entrant has launched with 1 Lakh (100,000 units) capacity, targeting the mass market. Overall SS penetration is now at peak (25%)."
     },
   ];
 
   const current = roundInfo[round - 1];
 
   return (
-    <motion.div 
+    <motion.div
       initial={{ opacity: 0, y: -10 }}
       animate={{ opacity: 1, y: 0 }}
       className="bg-gradient-to-r from-blue-600 to-indigo-700 rounded-2xl p-6 text-white shadow-lg"
@@ -392,8 +392,8 @@ function ViewerDecisionPanel({ session, team, decisions }: { session: Session; t
           isSubmitted
             ? "bg-green-50 border-green-200 text-green-700"
             : writerDecision
-            ? "bg-blue-50 border-blue-200 text-blue-700 animate-pulse"
-            : "bg-slate-50 border-slate-200 text-slate-500"
+              ? "bg-blue-50 border-blue-200 text-blue-700 animate-pulse"
+              : "bg-slate-50 border-slate-200 text-slate-500"
         )}>
           <span className={cn(
             "w-2 h-2 rounded-full",
@@ -506,7 +506,7 @@ function DecisionForm({ session, team, decisions }: { session: Session, team: Te
   // Load existing draft or previous round data
   useEffect(() => {
     const draft = decisions.find(d => d.teamId === team.id && d.round === session.currentRound && !d.submittedAt);
-    
+
     if (draft) {
       setDraftId(draft.id!);
       setFormData({
@@ -658,8 +658,8 @@ function DecisionForm({ session, team, decisions }: { session: Session, team: Te
                 </h4>
                 <span className={cn(
                   "text-sm font-bold px-2 py-1 rounded-lg",
-                  segTotal === 100 
-                    ? "bg-green-100 text-green-700" 
+                  segTotal === 100
+                    ? "bg-green-100 text-green-700"
                     : "bg-red-100 text-red-700"
                 )}>
                   Total: {segTotal}%
@@ -834,8 +834,8 @@ function DecisionForm({ session, team, decisions }: { session: Session, team: Te
                 <h4 className="font-semibold text-slate-800">Distribution Channel (%)</h4>
                 <span className={cn(
                   "text-sm font-bold px-2 py-1 rounded-lg",
-                  distTotal === 100 
-                    ? "bg-green-100 text-green-700" 
+                  distTotal === 100
+                    ? "bg-green-100 text-green-700"
                     : "bg-red-100 text-red-700"
                 )}>
                   Total: {distTotal}%
@@ -872,7 +872,7 @@ function DecisionForm({ session, team, decisions }: { session: Session, team: Te
                   <span className={cn(
                     "text-sm font-bold px-2 py-1 rounded-lg transition-colors",
                     promTotal <= INDUSTRY_CONTEXT.maxPromotionBudget
-                      ? "bg-blue-100 text-blue-700" 
+                      ? "bg-blue-100 text-blue-700"
                       : "bg-red-100 text-red-700"
                   )}>
                     Total: ₹{(promTotal / 100000).toFixed(0)}L
@@ -959,12 +959,12 @@ function TeamResults({ team, teams, results, round, decisions, isAnalysisPhase, 
   const [showIndustryDecisions, setShowIndustryDecisions] = useState(false);
   const teamResults = results.filter(r => r.teamId === team.id).sort((a, b) => a.round - b.round);
   const myDecisions = decisions.filter(d => d.teamId === team.id && d.submittedAt).sort((a, b) => a.round - b.round);
-  
+
   // If we are in analysis phase, show the current round's result. Otherwise show the previous round's result.
-  const latestResult = isAnalysisPhase 
-    ? teamResults.find(r => r.round === round) 
+  const latestResult = isAnalysisPhase
+    ? teamResults.find(r => r.round === round)
     : teamResults.find(r => r.round === round - 1);
-    
+
   const displayResult = latestResult || teamResults[teamResults.length - 1];
   const previousResult = displayResult ? teamResults.find(r => r.round === displayResult.round - 1) : null;
 
@@ -1026,31 +1026,31 @@ function TeamResults({ team, teams, results, round, decisions, isAnalysisPhase, 
 
       {/* KPI Cards */}
       <div className="grid grid-cols-2 sm:grid-cols-4 gap-4">
-        <KPIBox 
-          label="Market Share" 
-          value={`${(displayResult.marketShare * 100).toFixed(1)}%`} 
-          icon={<PieChart className="h-4 w-4" />} 
+        <KPIBox
+          label="Potential Demand Capture"
+          value={`${(displayResult.marketShare * 100).toFixed(1)}%`}
+          icon={<PieChart className="h-4 w-4" />}
           color="text-blue-600"
           delta={msDelta}
         />
-        <KPIBox 
-          label="Volume" 
-          value={`${displayResult.volume.toLocaleString()} units`} 
-          icon={<Users className="h-4 w-4" />} 
+        <KPIBox
+          label="Volume"
+          value={`${displayResult.volume.toLocaleString()} units`}
+          icon={<Users className="h-4 w-4" />}
           color="text-orange-600"
           delta={volDelta}
         />
-        <KPIBox 
-          label="Revenue" 
-          value={`₹${(displayResult.revenue / 10000000).toFixed(2)} Cr`} 
-          icon={<TrendingUp className="h-4 w-4" />} 
+        <KPIBox
+          label="Revenue"
+          value={`₹${(displayResult.revenue / 10000000).toFixed(2)} Cr`}
+          icon={<TrendingUp className="h-4 w-4" />}
           color="text-green-600"
           delta={revDelta}
         />
-        <KPIBox 
-          label="Profit" 
-          value={`₹${(displayResult.profit / 10000000).toFixed(2)} Cr`} 
-          icon={<DollarSign className="h-4 w-4" />} 
+        <KPIBox
+          label="Profit"
+          value={`₹${(displayResult.profit / 10000000).toFixed(2)} Cr`}
+          icon={<DollarSign className="h-4 w-4" />}
           color="text-indigo-600"
           delta={profDelta}
         />
@@ -1076,11 +1076,11 @@ function TeamResults({ team, teams, results, round, decisions, isAnalysisPhase, 
               <span className="text-sm text-slate-500">Capacity Utilization</span>
               <div className="flex items-center gap-2">
                 <div className="w-24 h-2 bg-slate-100 rounded-full overflow-hidden">
-                  <div 
+                  <div
                     className={cn(
                       "h-full transition-all",
-                      displayResult.capacityUtilization > 95 ? "bg-red-500" : 
-                      displayResult.capacityUtilization > 70 ? "bg-green-500" : "bg-blue-500"
+                      displayResult.capacityUtilization > 95 ? "bg-red-500" :
+                        displayResult.capacityUtilization > 70 ? "bg-green-500" : "bg-blue-500"
                     )}
                     style={{ width: `${Math.min(100, displayResult.capacityUtilization)}%` }}
                   />
@@ -1111,7 +1111,7 @@ function TeamResults({ team, teams, results, round, decisions, isAnalysisPhase, 
               <span className="text-sm text-slate-500">Sales Force Efficiency</span>
               <span className="font-bold text-indigo-600">{(displayResult.salesForceEfficiency * 100).toFixed(0)}%</span>
             </div>
-            
+
             <div>
               <p className="text-xs font-bold text-slate-400 uppercase mb-2">Key Strengths</p>
               <div className="flex flex-wrap gap-2">
@@ -1170,8 +1170,8 @@ function TeamResults({ team, teams, results, round, decisions, isAnalysisPhase, 
       </div>
 
       {/* FINAL TRANSPARENCY: Round 6 Analysis Phase or Completed Status */}
-      {( (round === 6 && isAnalysisPhase) || sessionStatus === 'completed') && (
-        <motion.div 
+      {((round === 6 && isAnalysisPhase) || sessionStatus === 'completed') && (
+        <motion.div
           initial={{ opacity: 0, y: 20 }}
           animate={{ opacity: 1, y: 0 }}
           className="bg-gradient-to-br from-indigo-900 to-slate-900 rounded-3xl p-8 text-white shadow-2xl border border-indigo-500/30"
@@ -1210,54 +1210,54 @@ function TeamResults({ team, teams, results, round, decisions, isAnalysisPhase, 
                   const totalProm = teamResults.reduce((sum, r) => sum + (r.promotionCosts || 0), 0);
                   const totalVar = teamResults.reduce((sum, r) => sum + (r.variableCosts || 0), 0);
                   const totalContribution = teamResults.reduce((sum, r) => sum + (r.contributionMargin || 0), 0);
-                  
+
                   return { t, totalProfit, totalRevenue, totalFixed, totalSF, totalProm, totalVar, totalContribution };
                 })
-                .sort((a, b) => b.totalProfit - a.totalProfit)
-                .map(({ t, totalProfit, totalRevenue, totalFixed, totalSF, totalProm, totalVar, totalContribution }, idx) => (
-                  <tr key={t.id} className={cn("group transition-colors", t.id === team.id && "bg-white/5")}>
-                    <td className="py-4 px-2">
-                       <div className="flex items-center gap-2">
-                         <span className="text-xs text-white/40 font-bold w-4">#{idx+1}</span>
-                         <div>
-                           <p className="font-bold text-sm leading-tight">{t.name}</p>
-                           {t.id === team.id && <p className="text-[9px] text-indigo-300 uppercase tracking-tighter">Current Team</p>}
-                         </div>
-                       </div>
-                    </td>
-                    <td className="py-4 px-2 text-indigo-100/70 text-xs font-mono">₹{(totalRevenue / 10000000).toFixed(2)} Cr</td>
-                    <td className="py-4 px-2 text-red-300/50 text-xs font-mono">-₹{(totalVar / 10000000).toFixed(2)} Cr</td>
-                    <td className="py-4 px-2 text-indigo-300 font-bold text-xs font-mono">₹{(totalContribution / 10000000).toFixed(2)} Cr</td>
-                    <td className="py-4 px-2 text-red-200/40 text-[10px] font-mono">₹{(totalProm / 100000).toFixed(1)} L</td>
-                    <td className="py-4 px-2 text-red-200/40 text-[10px] font-mono">₹{(totalSF / 100000).toFixed(1)} L</td>
-                    <td className="py-4 px-2 text-red-200/40 text-[10px] font-mono">₹{(totalFixed / 100000).toFixed(1)} L</td>
-                    <td className={cn("py-4 px-2 font-black font-mono text-sm", totalProfit >= 0 ? "text-green-400" : "text-red-400")}>
-                      ₹{(totalProfit / 10000000).toFixed(2)} Cr
-                    </td>
-                  </tr>
-                ))}
+                  .sort((a, b) => b.totalProfit - a.totalProfit)
+                  .map(({ t, totalProfit, totalRevenue, totalFixed, totalSF, totalProm, totalVar, totalContribution }, idx) => (
+                    <tr key={t.id} className={cn("group transition-colors", t.id === team.id && "bg-white/5")}>
+                      <td className="py-4 px-2">
+                        <div className="flex items-center gap-2">
+                          <span className="text-xs text-white/40 font-bold w-4">#{idx + 1}</span>
+                          <div>
+                            <p className="font-bold text-sm leading-tight">{t.name}</p>
+                            {t.id === team.id && <p className="text-[9px] text-indigo-300 uppercase tracking-tighter">Current Team</p>}
+                          </div>
+                        </div>
+                      </td>
+                      <td className="py-4 px-2 text-indigo-100/70 text-xs font-mono">₹{(totalRevenue / 10000000).toFixed(2)} Cr</td>
+                      <td className="py-4 px-2 text-red-300/50 text-xs font-mono">-₹{(totalVar / 10000000).toFixed(2)} Cr</td>
+                      <td className="py-4 px-2 text-indigo-300 font-bold text-xs font-mono">₹{(totalContribution / 10000000).toFixed(2)} Cr</td>
+                      <td className="py-4 px-2 text-red-200/40 text-[10px] font-mono">₹{(totalProm / 100000).toFixed(1)} L</td>
+                      <td className="py-4 px-2 text-red-200/40 text-[10px] font-mono">₹{(totalSF / 100000).toFixed(1)} L</td>
+                      <td className="py-4 px-2 text-red-200/40 text-[10px] font-mono">₹{(totalFixed / 100000).toFixed(1)} L</td>
+                      <td className={cn("py-4 px-2 font-black font-mono text-sm", totalProfit >= 0 ? "text-green-400" : "text-red-400")}>
+                        ₹{(totalProfit / 10000000).toFixed(2)} Cr
+                      </td>
+                    </tr>
+                  ))}
               </tbody>
             </table>
           </div>
-          
+
           <div className="mt-8 pt-6 border-t border-white/10 flex flex-col sm:flex-row justify-between items-center gap-4">
-             <div className="flex items-center gap-2 text-xs font-bold uppercase tracking-wider text-white/50">
-               <Info className="h-4 w-4" />
-               Based on all 6 simulation rounds
-             </div>
-             <button 
-                onClick={() => window.print()}
-                className="bg-white text-slate-900 px-6 py-2 rounded-xl font-bold hover:bg-indigo-50 transition-all flex items-center gap-2"
-             >
-               Print Final Report
-             </button>
+            <div className="flex items-center gap-2 text-xs font-bold uppercase tracking-wider text-white/50">
+              <Info className="h-4 w-4" />
+              Based on all 6 simulation rounds
+            </div>
+            <button
+              onClick={() => window.print()}
+              className="bg-white text-slate-900 px-6 py-2 rounded-xl font-bold hover:bg-indigo-50 transition-all flex items-center gap-2"
+            >
+              Print Final Report
+            </button>
           </div>
         </motion.div>
       )}
 
       {/* Decision History Toggle */}
       <div className="flex flex-col sm:flex-row justify-center gap-4">
-        <button 
+        <button
           onClick={() => setShowHistory(!showHistory)}
           className="flex items-center justify-center gap-2 text-blue-600 font-semibold hover:text-blue-700 transition-colors bg-white px-4 py-2 rounded-xl border border-slate-200 shadow-sm"
         >
@@ -1265,7 +1265,7 @@ function TeamResults({ team, teams, results, round, decisions, isAnalysisPhase, 
           <ChevronRight className={cn("h-4 w-4 transition-transform", showHistory && "rotate-90")} />
         </button>
 
-        <button 
+        <button
           onClick={() => setShowIndustryDecisions(!showIndustryDecisions)}
           className="flex items-center justify-center gap-2 text-indigo-600 font-semibold hover:text-indigo-700 transition-colors bg-white px-4 py-2 rounded-xl border border-slate-200 shadow-sm"
         >
@@ -1390,13 +1390,13 @@ function TeamResults({ team, teams, results, round, decisions, isAnalysisPhase, 
 }
 
 function PLStatement({ result, decision }: { result: Result, decision?: Decision }) {
-  const { 
-    revenue, 
-    variableCosts, 
-    contributionMargin, 
-    fixedCosts, 
-    salesForceCosts, 
-    promotionCosts, 
+  const {
+    revenue,
+    variableCosts,
+    contributionMargin,
+    fixedCosts,
+    salesForceCosts,
+    promotionCosts,
     profit,
     unitPrice,
     unitCost,
@@ -1472,8 +1472,8 @@ function PLStatement({ result, decision }: { result: Result, decision?: Decision
             <span>- ₹{variableCosts.toLocaleString()}</span>
           </div>
           <div className="pl-6 text-[11px] text-slate-500 space-y-1 italic">
-             <p>• Materials, Direct Labor & Energy</p>
-             <p>• Inventory Handling & Logistics</p>
+            <p>• Materials, Direct Labor & Energy</p>
+            <p>• Inventory Handling & Logistics</p>
           </div>
         </div>
 
@@ -1494,7 +1494,7 @@ function PLStatement({ result, decision }: { result: Result, decision?: Decision
             </span>
             <span>- ₹{fixedCosts.toLocaleString()}</span>
           </div>
-          
+
           <div className="flex justify-between items-center text-sm text-slate-600 font-medium">
             <span className="flex items-center gap-2">
               <span className="w-1.5 h-1.5 rounded-full bg-slate-300"></span>
@@ -1502,7 +1502,7 @@ function PLStatement({ result, decision }: { result: Result, decision?: Decision
             </span>
             <span>- ₹{salesForceCosts.toLocaleString()}</span>
           </div>
-          
+
           <div className="space-y-1">
             <div className="flex justify-between items-center text-sm text-slate-600 font-medium">
               <span className="flex items-center gap-2">
@@ -1529,10 +1529,10 @@ function PLStatement({ result, decision }: { result: Result, decision?: Decision
             {profit < 0 && "-"} ₹{Math.abs(profit).toLocaleString()}
           </span>
           <div className="h-1 w-full bg-slate-800 rounded-full mt-2 overflow-hidden">
-             <div 
-               className={cn("h-full", profit >= 0 ? "bg-green-500" : "bg-red-500")}
-               style={{ width: `${Math.min(100, (Math.abs(profit) / Math.max(1, revenue)) * 100)}%` }}
-             />
+            <div
+              className={cn("h-full", profit >= 0 ? "bg-green-500" : "bg-red-500")}
+              style={{ width: `${Math.min(100, (Math.abs(profit) / Math.max(1, revenue)) * 100)}%` }}
+            />
           </div>
         </div>
       </div>
@@ -1562,13 +1562,13 @@ function KPIBox({ label, value, icon, color, delta }: { label: string, value: st
 
 function Leaderboard({ teams, results, round, status, isAnalysisPhase }: { teams: Team[], results: Result[], round: number, status: string, isAnalysisPhase: boolean }) {
   const displayRound = (status === 'completed' || isAnalysisPhase) ? round : round - 1;
-  
+
   const sortedTeams = teams.map(t => {
     // Calculate cumulative profit up to displayRound
     const teamResults = results.filter(r => r.teamId === t.id && r.round <= displayRound);
     const cumulativeProfit = teamResults.reduce((sum, r) => sum + r.profit, 0);
     const latestResult = teamResults.find(r => r.round === displayRound);
-    
+
     return { ...t, cumulativeProfit, latestResult };
   }).sort((a, b) => b.cumulativeProfit - a.cumulativeProfit);
 
@@ -1615,9 +1615,9 @@ function Leaderboard({ teams, results, round, status, isAnalysisPhase }: { teams
               <span className={cn(
                 "w-6 h-6 flex items-center justify-center rounded-full text-xs font-bold",
                 idx === 0 ? "bg-amber-100 text-amber-700" :
-                idx === 1 ? "bg-slate-200 text-slate-700" :
-                idx === 2 ? "bg-orange-100 text-orange-700" :
-                "bg-slate-100 text-slate-500"
+                  idx === 1 ? "bg-slate-200 text-slate-700" :
+                    idx === 2 ? "bg-orange-100 text-orange-700" :
+                      "bg-slate-100 text-slate-500"
               )}>
                 {idx + 1}
               </span>
@@ -1697,9 +1697,9 @@ function InstructorControls({ session, teams, decisions, results }: { session: S
 
   const startSimulation = async () => {
     setLoading(true);
-    await updateDoc(doc(db, 'sessions', session.id), { 
+    await updateDoc(doc(db, 'sessions', session.id), {
       status: 'active',
-      isAnalysisPhase: false 
+      isAnalysisPhase: false
     });
     setLoading(false);
   };
@@ -1708,16 +1708,16 @@ function InstructorControls({ session, teams, decisions, results }: { session: S
     setLoading(true);
     const currentRoundDecisions = decisions.filter(d => d.round === session.currentRound && d.submittedAt);
     const previousResults = results.filter(r => r.round === session.currentRound - 1);
-    
+
     // Calculate results
     const newResults = calculateRoundResults(
-      teams, 
-      currentRoundDecisions, 
-      previousResults, 
+      teams,
+      currentRoundDecisions,
+      previousResults,
       session.currentRound,
       session.totalMarketSize
     );
-    
+
     // Save results
     const batch = writeBatch(db);
     newResults.forEach(r => {
@@ -1728,7 +1728,7 @@ function InstructorControls({ session, teams, decisions, results }: { session: S
     // Set analysis phase
     const sessionRef = doc(db, 'sessions', session.id);
     batch.update(sessionRef, { isAnalysisPhase: true });
-    
+
     await batch.commit();
     setLoading(false);
   };
@@ -1737,14 +1737,14 @@ function InstructorControls({ session, teams, decisions, results }: { session: S
     setLoading(true);
     const sessionRef = doc(db, 'sessions', session.id);
     if (session.currentRound < 6) {
-      await updateDoc(sessionRef, { 
+      await updateDoc(sessionRef, {
         currentRound: session.currentRound + 1,
-        isAnalysisPhase: false 
+        isAnalysisPhase: false
       });
     } else {
-      await updateDoc(sessionRef, { 
+      await updateDoc(sessionRef, {
         status: 'completed',
-        isAnalysisPhase: false 
+        isAnalysisPhase: false
       });
     }
     setLoading(false);
@@ -1787,8 +1787,8 @@ function InstructorControls({ session, teams, decisions, results }: { session: S
           disabled={loading}
           className={cn(
             "flex items-center gap-2 px-4 py-2 rounded-lg font-semibold transition-all",
-            allSubmitted 
-              ? "bg-blue-600 text-white hover:bg-blue-700 shadow-md" 
+            allSubmitted
+              ? "bg-blue-600 text-white hover:bg-blue-700 shadow-md"
               : "bg-amber-100 text-amber-700 hover:bg-amber-200"
           )}
         >
@@ -1903,31 +1903,38 @@ function InstructorOverview({ session, teams, decisions, results }: { session: S
   useEffect(() => {
     setViewRound(session.currentRound);
   }, [session.currentRound]);
-  
+
   const selectedDecision = currentRoundDecisions.find(d => d.teamId === selectedTeamId);
   const selectedResult = currentRoundResults.find(r => r.teamId === selectedTeamId);
-  
+
   const cumulativeResults = teams.map(t => {
-    const teamResults = results.filter(r => r.teamId === t.id && r.round <= (session.status === 'completed' ? 5 : session.currentRound - 1));
+    // Include current round when in analysis phase (results just calculated) — mirrors chart logic
+    const maxRound = session.status === 'completed' ? 6
+      : session.isAnalysisPhase ? session.currentRound
+        : session.currentRound - 1;
+    const teamResults = results.filter(r => r.teamId === t.id && r.round <= maxRound);
     const totalProfit = teamResults.reduce((sum, r) => sum + r.profit, 0);
     const totalRevenue = teamResults.reduce((sum, r) => sum + r.revenue, 0);
     const avgMarketShare = teamResults.length > 0 ? teamResults.reduce((sum, r) => sum + r.marketShare, 0) / teamResults.length : 0;
-    return { ...t, totalProfit, totalRevenue, avgMarketShare };
+    // Actual market share: look up the exact value for the viewed round (not an average)
+    const viewRoundResult = results.find(r => r.teamId === t.id && r.round === viewRound);
+    const viewRoundActualMS = viewRoundResult?.actualMarketShare ?? null;
+    return { ...t, totalProfit, totalRevenue, avgMarketShare, viewRoundActualMS };
   }).sort((a, b) => b.totalProfit - a.totalProfit);
 
   // Competitive Intelligence Calculations
-  const avgPrice = currentRoundDecisions.length > 0 
-    ? currentRoundDecisions.reduce((sum, d) => sum + (d.pricing || 0), 0) / currentRoundDecisions.length 
-    : 0;
-  
-  const avgProm = currentRoundDecisions.length > 0
-    ? currentRoundDecisions.reduce((sum, d) => {
-        const p = d.promotionAllocation;
-        return sum + (p.events || 0) + (p.socialMedia || 0) + (p.tradeMagazines || 0) + (p.influencerEvents || 0);
-      }, 0) / currentRoundDecisions.length
+  const avgPrice = currentRoundDecisions.length > 0
+    ? currentRoundDecisions.reduce((sum, d) => sum + (d.pricing || 0), 0) / currentRoundDecisions.length
     : 0;
 
-  const topPerformer = currentRoundResults.length > 0 
+  const avgProm = currentRoundDecisions.length > 0
+    ? currentRoundDecisions.reduce((sum, d) => {
+      const p = d.promotionAllocation;
+      return sum + (p.events || 0) + (p.socialMedia || 0) + (p.tradeMagazines || 0) + (p.influencerEvents || 0);
+    }, 0) / currentRoundDecisions.length
+    : 0;
+
+  const topPerformer = currentRoundResults.length > 0
     ? teams.find(t => t.id === [...currentRoundResults].sort((a, b) => b.profit - a.profit)[0].teamId)
     : null;
 
@@ -1938,19 +1945,19 @@ function InstructorOverview({ session, teams, decisions, results }: { session: S
           <div className="flex items-center gap-4">
             <h3 className="text-lg font-bold text-slate-900">Instructor Dashboard</h3>
             <div className="flex bg-slate-100 p-1 rounded-lg">
-              <button 
+              <button
                 onClick={() => setActiveTab('progress')}
                 className={cn("px-3 py-1 rounded-md text-[10px] font-bold transition-all", activeTab === 'progress' ? "bg-white text-blue-600 shadow-sm" : "text-slate-500")}
               >
                 Submissions
               </button>
-              <button 
+              <button
                 onClick={() => setActiveTab('leaderboard')}
                 className={cn("px-3 py-1 rounded-md text-[10px] font-bold transition-all", activeTab === 'leaderboard' ? "bg-white text-blue-600 shadow-sm" : "text-slate-500")}
               >
                 Leaderboard
               </button>
-              <button 
+              <button
                 onClick={() => setActiveTab('intelligence')}
                 className={cn("px-3 py-1 rounded-md text-[10px] font-bold transition-all", activeTab === 'intelligence' ? "bg-white text-blue-600 shadow-sm" : "text-slate-500")}
               >
@@ -1984,13 +1991,13 @@ function InstructorOverview({ session, teams, decisions, results }: { session: S
               const hasSubmitted = !!decision;
               const hasDraft = !!draft;
               return (
-                <div 
-                  key={team.id} 
+                <div
+                  key={team.id}
                   className={cn(
                     "p-4 rounded-xl border flex items-center justify-between cursor-pointer transition-all",
-                    hasSubmitted ? "bg-green-50 border-green-200 hover:bg-green-100" : 
-                    hasDraft ? "bg-amber-50 border-amber-200 hover:bg-amber-100" :
-                    "bg-slate-50 border-slate-200 hover:bg-slate-100",
+                    hasSubmitted ? "bg-green-50 border-green-200 hover:bg-green-100" :
+                      hasDraft ? "bg-amber-50 border-amber-200 hover:bg-amber-100" :
+                        "bg-slate-50 border-slate-200 hover:bg-slate-100",
                     selectedTeamId === team.id && "ring-2 ring-blue-500"
                   )}
                   onClick={() => setSelectedTeamId(team.id)}
@@ -2020,6 +2027,8 @@ function InstructorOverview({ session, teams, decisions, results }: { session: S
                   <th className="py-3 px-4 text-xs font-bold text-slate-400 uppercase">Team</th>
                   <th className="py-3 px-4 text-xs font-bold text-slate-400 uppercase text-right">Cum. Revenue</th>
                   <th className="py-3 px-4 text-xs font-bold text-slate-400 uppercase text-right">Cum. Profit</th>
+                  <th className="py-3 px-4 text-xs font-bold text-slate-400 uppercase text-right">Avg PDC</th>
+                  <th className="py-3 px-4 text-xs font-bold text-emerald-600 uppercase text-right">Actual MS (R{viewRound})</th>
                 </tr>
               </thead>
               <tbody>
@@ -2036,6 +2045,12 @@ function InstructorOverview({ session, teams, decisions, results }: { session: S
                     <td className="py-4 px-4 font-semibold text-slate-700">{team.name}</td>
                     <td className="py-4 px-4 text-right font-mono text-sm">₹{(team.totalRevenue / 10000000).toFixed(2)} Cr</td>
                     <td className="py-4 px-4 text-right font-mono text-sm font-bold text-blue-600">₹{(team.totalProfit / 10000000).toFixed(2)} Cr</td>
+                    <td className="py-4 px-4 text-right font-mono text-sm text-slate-500">{(team.avgMarketShare * 100).toFixed(1)}%</td>
+                    <td className="py-4 px-4 text-right font-mono text-sm font-bold text-emerald-600">
+                      {team.viewRoundActualMS != null
+                        ? `${(team.viewRoundActualMS * 100).toFixed(2)}%`
+                        : 'N/A'}
+                    </td>
                   </tr>
                 ))}
               </tbody>
@@ -2074,7 +2089,7 @@ function InstructorOverview({ session, teams, decisions, results }: { session: S
               <h3 className="text-lg font-bold text-slate-900">
                 Performance Analysis: {teams.find(t => t.id === selectedTeamId)?.name} (Round {viewRound})
               </h3>
-              <button 
+              <button
                 onClick={() => setSelectedTeamId(null)}
                 className="text-slate-400 hover:text-slate-600"
               >
@@ -2086,7 +2101,7 @@ function InstructorOverview({ session, teams, decisions, results }: { session: S
               <div className="space-y-8">
                 {/* Results Summary if available */}
                 {selectedResult && viewRound >= 2 && (
-                  <div className="grid grid-cols-2 sm:grid-cols-4 gap-4 p-4 bg-slate-50 rounded-xl border border-slate-100">
+                  <div className="grid grid-cols-2 sm:grid-cols-5 gap-4 p-4 bg-slate-50 rounded-xl border border-slate-100">
                     <div>
                       <p className="text-[10px] uppercase text-slate-500 font-bold">Revenue</p>
                       <p className="text-sm font-bold">₹{(selectedResult.revenue / 10000000).toFixed(2)} Cr</p>
@@ -2096,8 +2111,16 @@ function InstructorOverview({ session, teams, decisions, results }: { session: S
                       <p className="text-sm font-bold text-blue-600">₹{(selectedResult.profit / 10000000).toFixed(2)} Cr</p>
                     </div>
                     <div>
-                      <p className="text-[10px] uppercase text-slate-500 font-bold">Market Share</p>
+                      <p className="text-[10px] uppercase text-slate-500 font-bold">Potential Demand Capture</p>
                       <p className="text-sm font-bold">{(selectedResult.marketShare * 100).toFixed(1)}%</p>
+                    </div>
+                    <div>
+                      <p className="text-[10px] uppercase text-slate-500 font-bold">Actual Mkt Share</p>
+                      <p className="text-sm font-bold text-emerald-600">
+                        {selectedResult.actualMarketShare != null
+                          ? `${(selectedResult.actualMarketShare * 100).toFixed(2)}%`
+                          : 'N/A'}
+                      </p>
                     </div>
                     <div>
                       <p className="text-[10px] uppercase text-slate-500 font-bold">Utilization</p>
@@ -2121,7 +2144,7 @@ function InstructorOverview({ session, teams, decisions, results }: { session: S
                     <p className="text-sm"><span className="text-slate-500">Capacity:</span> <span className="font-bold">{viewRound >= 2 ? (selectedDecision.productionCapacityChoice || 'Medium') : '-'}</span></p>
                     <p className="text-sm"><span className="text-slate-500">Sales Force:</span> <span className="font-bold">{viewRound >= 2 ? `${selectedDecision.salesForceCount} / ₹${(selectedDecision.salesForceSalary / 100000).toFixed(1)}L` : '-'}</span></p>
                     <p className="text-sm"><span className="text-slate-500">Sourcing:</span> <span className="font-bold text-blue-600">{viewRound >= 2 ? (selectedDecision.sourcing || 'Domestic') : '-'}</span></p>
-                    
+
                     {selectedDecision.assumptions && viewRound === 1 && (
                       <div className="mt-4 p-3 bg-slate-50 rounded-lg">
                         <p className="text-xs font-bold text-slate-500 uppercase mb-1">Assumptions</p>
@@ -2141,7 +2164,7 @@ function InstructorOverview({ session, teams, decisions, results }: { session: S
                         <p className="text-sm font-bold">{viewRound >= 2 ? (selectedDecision.productStrategy || '-') : '-'}</p>
                       </div>
                     </div>
-                    
+
                     <div className="grid grid-cols-3 gap-2">
                       <div className="text-center p-2 bg-blue-50 rounded-lg">
                         <p className="text-[10px] uppercase text-blue-600 font-bold">Resi</p>
@@ -2209,7 +2232,7 @@ function InstructorOverview({ session, teams, decisions, results }: { session: S
 
       {/* Global Results Chart */}
       <div className="bg-white rounded-2xl p-6 shadow-sm border border-slate-200">
-        <h3 className="text-lg font-bold text-slate-900 mb-6">Market Share Trends (%)</h3>
+        <h3 className="text-lg font-bold text-slate-900 mb-6">Potential Demand Capture Trends (%)</h3>
         <div className="h-80 w-full">
           <ResponsiveContainer width="100%" height="100%">
             <LineChart data={Array.from({ length: (session.status === 'completed' || session.isAnalysisPhase) ? session.currentRound : session.currentRound - 1 }, (_, i) => {
@@ -2228,11 +2251,11 @@ function InstructorOverview({ session, teams, decisions, results }: { session: S
               <Tooltip />
               <Legend />
               {teams.map((team, index) => (
-                <Line 
+                <Line
                   key={team.id}
-                  type="monotone" 
-                  dataKey={team.name} 
-                  stroke={['#2563eb', '#10b981', '#6366f1', '#f59e0b', '#ec4899'][index % 5]} 
+                  type="monotone"
+                  dataKey={team.name}
+                  stroke={['#2563eb', '#10b981', '#6366f1', '#f59e0b', '#ec4899'][index % 5]}
                   strokeWidth={2}
                   dot={{ r: 4 }}
                   activeDot={{ r: 6 }}
