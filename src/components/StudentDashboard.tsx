@@ -93,8 +93,16 @@ export default function StudentDashboard({ user }: { user: UserProfile }) {
 
       const sessionDoc = sessionSnapshot.docs[0];
       const sessionId = sessionDoc.id;
+      const sessionStatus = sessionDoc.data().status as string;
 
-      // 2. Check if user is already in a team (as member or viewer) for this session
+      // 2. Block new joins once the simulation has started
+      if (sessionStatus === 'active' || sessionStatus === 'completed') {
+        setError('This simulation has already started. New teams can no longer join.');
+        setLoading(false);
+        return;
+      }
+
+      // 3. Check if user is already in a team (as member or viewer) for this session
       const memberQuery = query(
         collection(db, 'teams'), 
         where('sessionId', '==', sessionId),
