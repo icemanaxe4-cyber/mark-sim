@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react';
-import { collection, query, where, onSnapshot, addDoc, serverTimestamp, getDocs, doc, getDoc, updateDoc, arrayUnion } from 'firebase/firestore';
+import { collection, query, where, onSnapshot, getDocs, doc, getDoc, updateDoc, arrayUnion } from 'firebase/firestore';
 import { db, auth, handleFirestoreError, OperationType } from '../firebase';
 import { Session, UserProfile, Team } from '../types';
 import { Plus, LogOut, Loader2, Search, Users, BarChart3, ChevronRight, Eye, PenLine } from 'lucide-react';
@@ -9,14 +9,16 @@ import { useNavigate } from 'react-router-dom';
 
 export default function StudentDashboard({ user }: { user: UserProfile }) {
   const [joinCode, setJoinCode] = useState('');
-  const [teamName, setTeamName] = useState('');
+  const [availableTeams, setAvailableTeams] = useState<Team[]>([]);
+  const [selectedSession, setSelectedSession] = useState<Session | null>(null);
+  const [selectedTeamId, setSelectedTeamId] = useState('');
+  const [teamsLoading, setTeamsLoading] = useState(false);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState('');
   const [myTeams, setMyTeams] = useState<(Team & { sessionName: string; isViewer: boolean })[]>([]);
   const navigate = useNavigate();
 
   useEffect(() => {
-    // Find all teams where this user is a member OR a viewer
     const memberQuery = query(collection(db, 'teams'), where('members', 'array-contains', user.uid));
     const viewerQuery = query(collection(db, 'teams'), where('viewers', 'array-contains', user.uid));
 
@@ -26,7 +28,7 @@ export default function StudentDashboard({ user }: { user: UserProfile }) {
           ...memberDocs.map(d => ({ doc: d, isViewer: false })),
           ...viewerDocs.map(d => ({ doc: d, isViewer: true })),
         ];
-        // Deduplicate by team ID
+
         const seen = new Set<string>();
         const unique = allDocs.filter(({ doc }) => {
           if (seen.has(doc.id)) return false;
@@ -37,14 +39,15 @@ export default function StudentDashboard({ user }: { user: UserProfile }) {
         const teamData = await Promise.all(unique.map(async ({ doc: teamDoc, isViewer }) => {
           const data = teamDoc.data() as Team;
           const sessionDoc = await getDoc(doc(db, 'sessions', data.sessionId));
-          return { 
-            id: teamDoc.id, 
-            ...data, 
+          return {
+            id: teamDoc.id,
+            ...data,
             sessionName: sessionDoc.exists() ? sessionDoc.data().name : 'Unknown Session',
             isViewer,
           };
         }));
-        setMyTeams(teamData.sort((a, b) => b.createdAt?.seconds - a.createdAt?.seconds));
+
+        setMyTeams(teamData.sort((a, b) => (b.createdAt?.seconds || 0) - (a.createdAt?.seconds || 0)));
       } catch (err) {
         handleFirestoreError(err, OperationType.GET, 'teams');
       }
@@ -73,17 +76,71 @@ export default function StudentDashboard({ user }: { user: UserProfile }) {
     };
   }, [user.uid]);
 
+  useEffect(() => {
+    const code = joinCode.trim().toUpperCase();
+    setSelectedTeamId('');
+    setAvailableTeams([]);
+    setSelectedSession(null);
+
+    if (code.length < 6) {
+      setError('');
+      return;
+    }
+
+    let cancelled = false;
+    const loadTeams = async () => {
+      setTeamsLoading(true);
+      setError('');
+      try {
+        const sessionQuery = query(collection(db, 'sessions'), where('joinCode', '==', code));
+        const sessionSnapshot = await getDocs(sessionQuery);
+
+        if (cancelled) return;
+        if (sessionSnapshot.empty) {
+          setError('Invalid join code. Please check with your instructor.');
+          return;
+        }
+
+        const sessionDoc = sessionSnapshot.docs[0];
+        const sessionData = { id: sessionDoc.id, ...sessionDoc.data() } as Session;
+        const teamsQuery = query(collection(db, 'teams'), where('sessionId', '==', sessionDoc.id));
+        const teamsSnapshot = await getDocs(teamsQuery);
+
+        if (cancelled) return;
+        const teams = teamsSnapshot.docs
+          .map(teamDoc => ({ id: teamDoc.id, ...teamDoc.data() } as Team))
+          .sort((a, b) => {
+            const aNum = Number(a.name.match(/\d+/)?.[0] || 0);
+            const bNum = Number(b.name.match(/\d+/)?.[0] || 0);
+            return aNum - bNum || a.name.localeCompare(b.name);
+          });
+
+        setSelectedSession(sessionData);
+        setAvailableTeams(teams);
+        setSelectedTeamId(teams[0]?.id || '');
+      } catch (err: any) {
+        if (!cancelled) setError(err.message);
+      } finally {
+        if (!cancelled) setTeamsLoading(false);
+      }
+    };
+
+    loadTeams();
+    return () => {
+      cancelled = true;
+    };
+  }, [joinCode]);
+
   const handleJoinSession = async (e: React.FormEvent) => {
     e.preventDefault();
-    if (!joinCode.trim() || !teamName.trim()) return;
+    if (!joinCode.trim() || !selectedTeamId) return;
 
     setLoading(true);
     setError('');
 
     try {
-      // 1. Find session by join code
-      const q = query(collection(db, 'sessions'), where('joinCode', '==', joinCode.toUpperCase()));
-      const sessionSnapshot = await getDocs(q);
+      const sessionQuery = query(collection(db, 'sessions'), where('joinCode', '==', joinCode.toUpperCase()));
+      const sessionSnapshot = await getDocs(sessionQuery);
 
       if (sessionSnapshot.empty) {
         setError('Invalid join code. Please check with your instructor.');
@@ -93,18 +150,10 @@ export default function StudentDashboard({ user }: { user: UserProfile }) {
 
       const sessionDoc = sessionSnapshot.docs[0];
       const sessionId = sessionDoc.id;
-      const sessionStatus = sessionDoc.data().status as string;
+      const sessionStatus = sessionDoc.data().status as Session['status'];
 
-      // 2. Block new joins once the simulation has started
-      if (sessionStatus === 'active' || sessionStatus === 'completed') {
-        setError('This simulation has already started. New teams can no longer join.');
-        setLoading(false);
-        return;
-      }
-
-      // 3. Check if user is already in a team (as member or viewer) for this session
       const memberQuery = query(
-        collection(db, 'teams'), 
+        collection(db, 'teams'),
         where('sessionId', '==', sessionId),
         where('members', 'array-contains', user.uid)
       );
@@ -115,7 +164,6 @@ export default function StudentDashboard({ user }: { user: UserProfile }) {
         return;
       }
 
-      // Also check viewer arrays
       const viewerQuery = query(
         collection(db, 'teams'),
         where('sessionId', '==', sessionId),
@@ -128,43 +176,26 @@ export default function StudentDashboard({ user }: { user: UserProfile }) {
         return;
       }
 
-      // 3. Check if a team with this name already exists in the session
-      const nameQuery = query(
-        collection(db, 'teams'),
-        where('sessionId', '==', sessionId),
-        where('name', '==', teamName.trim())
-      );
-      const nameSnapshot = await getDocs(nameQuery);
-
-      if (!nameSnapshot.empty) {
-        // Team name exists → join as viewer
-        const existingTeam = nameSnapshot.docs[0];
-        const existingData = existingTeam.data();
-        const currentViewers: string[] = existingData.viewers || [];
-
-        // Enforce max 3 viewers (since 1 write + 3 view = 4 members per team)
-        if (currentViewers.length >= 3) {
-          setError('This team already has the maximum number of viewers (3). Each team supports 1 writer + 3 viewers.');
-          setLoading(false);
-          return;
-        }
-
-        await updateDoc(doc(db, 'teams', existingTeam.id), {
-          viewers: arrayUnion(user.uid),
-        });
-      } else {
-        // Team name does not exist → create new team (write mode)
-        await addDoc(collection(db, 'teams'), {
-          name: teamName.trim(),
-          sessionId,
-          members: [user.uid],
-          viewers: [],
-          createdAt: serverTimestamp(),
-        });
+      const selectedTeamDoc = await getDoc(doc(db, 'teams', selectedTeamId));
+      if (!selectedTeamDoc.exists() || selectedTeamDoc.data().sessionId !== sessionId) {
+        setError('Please select a valid team for this session.');
+        setLoading(false);
+        return;
       }
 
+      const selectedTeam = selectedTeamDoc.data() as Team;
+      const joinsAsWriter = sessionStatus === 'waiting' && (selectedTeam.members || []).length === 0;
+
+      await updateDoc(doc(db, 'teams', selectedTeamId), joinsAsWriter ? {
+        members: arrayUnion(user.uid),
+      } : {
+        viewers: arrayUnion(user.uid),
+      });
+
       setJoinCode('');
-      setTeamName('');
+      setSelectedTeamId('');
+      setSelectedSession(null);
+      setAvailableTeams([]);
       navigate(`/session/${sessionId}`);
     } catch (err: any) {
       setError(err.message);
@@ -178,9 +209,12 @@ export default function StudentDashboard({ user }: { user: UserProfile }) {
     navigate('/login');
   };
 
+  const selectedTeam = availableTeams.find(team => team.id === selectedTeamId);
+  const willJoinAsWriter = !!selectedSession && selectedSession.status === 'waiting' && selectedTeam && (selectedTeam.members || []).length === 0;
+  const canJoin = !!selectedTeamId && !teamsLoading && !loading;
+
   return (
     <div className="min-h-screen bg-slate-50">
-      {/* Header */}
       <header className="bg-white border-b border-slate-200 sticky top-0 z-10">
         <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 h-16 flex items-center justify-between">
           <div className="flex items-center gap-2">
@@ -206,7 +240,6 @@ export default function StudentDashboard({ user }: { user: UserProfile }) {
 
       <main className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8">
         <div className="grid grid-cols-1 lg:grid-cols-3 gap-8">
-          {/* Join Session Section */}
           <div className="lg:col-span-1">
             <div className="bg-white rounded-2xl p-6 shadow-sm border border-slate-200">
               <h2 className="text-lg font-semibold text-slate-900 mb-4">Join a Simulation</h2>
@@ -231,35 +264,53 @@ export default function StudentDashboard({ user }: { user: UserProfile }) {
                   </div>
                 </div>
                 <div>
-                  <label className="block text-sm font-medium text-slate-700 mb-1">Team Name</label>
+                  <label className="block text-sm font-medium text-slate-700 mb-1">Team</label>
                   <div className="relative">
                     <Users className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-slate-400" />
-                    <input
-                      type="text"
+                    <select
                       required
-                      value={teamName}
-                      onChange={(e) => setTeamName(e.target.value)}
-                      placeholder="e.g., Steel Titans"
-                      className="w-full rounded-lg border border-slate-200 pl-10 pr-4 py-2 focus:border-blue-500 focus:outline-none focus:ring-1 focus:ring-blue-500"
-                    />
+                      value={selectedTeamId}
+                      onChange={(e) => setSelectedTeamId(e.target.value)}
+                      disabled={!selectedSession || teamsLoading || availableTeams.length === 0}
+                      className="w-full rounded-lg border border-slate-200 pl-10 pr-4 py-2 focus:border-blue-500 focus:outline-none focus:ring-1 focus:ring-blue-500 disabled:bg-slate-50 disabled:text-slate-400"
+                    >
+                      <option value="">{teamsLoading ? 'Loading teams...' : 'Select team'}</option>
+                      {availableTeams.map(team => {
+                        const hasWriter = (team.members || []).length > 0;
+                        const mode = selectedSession?.status === 'waiting' && !hasWriter ? 'Write' : 'View';
+                        return (
+                          <option key={team.id} value={team.id}>
+                            {team.name} - {mode} Mode
+                          </option>
+                        );
+                      })}
+                    </select>
                   </div>
                 </div>
+                {selectedSession && selectedTeam && (
+                  <div className={cn(
+                    "rounded-lg border px-3 py-2 text-xs font-semibold",
+                    willJoinAsWriter
+                      ? "bg-green-50 border-green-200 text-green-700"
+                      : "bg-amber-50 border-amber-200 text-amber-700"
+                  )}>
+                    {willJoinAsWriter
+                      ? 'You will join this team in write mode.'
+                      : 'You will join this team in view-only mode.'}
+                  </div>
+                )}
                 <button
                   type="submit"
-                  disabled={loading}
+                  disabled={!canJoin}
                   className="w-full flex items-center justify-center gap-2 bg-blue-600 text-white px-4 py-2.5 rounded-lg font-semibold hover:bg-blue-700 disabled:opacity-50 transition-all"
                 >
                   {loading ? <Loader2 className="h-5 w-5 animate-spin" /> : <Plus className="h-5 w-5" />}
-                  Join & Create Team
+                  Join Simulation
                 </button>
-                <p className="text-xs text-slate-400 text-center">
-                  Entering an existing team name will add you as a <span className="font-semibold text-amber-600">viewer</span> (read-only).
-                </p>
               </form>
             </div>
           </div>
 
-          {/* My Simulations Section */}
           <div className="lg:col-span-2">
             <div className="flex items-center justify-between mb-6">
               <h2 className="text-lg font-semibold text-slate-900">My Active Simulations</h2>

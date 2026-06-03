@@ -14,6 +14,7 @@ export default function InstructorDashboard({ user }: { user: UserProfile }) {
   const [loading, setLoading] = useState(true);
   const [newSessionName, setNewSessionName] = useState('');
   const [totalMarketSize, setTotalMarketSize] = useState(6000000);
+  const [teamCount, setTeamCount] = useState(5);
   const [isCreating, setIsCreating] = useState(false);
   const [isDeleting, setIsDeleting] = useState<string | null>(null);
   const [sessionToDelete, setSessionToDelete] = useState<Session | null>(null);
@@ -39,7 +40,7 @@ export default function InstructorDashboard({ user }: { user: UserProfile }) {
     setIsCreating(true);
     try {
       const joinCode = Math.random().toString(36).substring(2, 8).toUpperCase();
-      await addDoc(collection(db, 'sessions'), {
+      const sessionRef = await addDoc(collection(db, 'sessions'), {
         name: newSessionName,
         instructorId: user.uid,
         joinCode,
@@ -49,9 +50,25 @@ export default function InstructorDashboard({ user }: { user: UserProfile }) {
         createdAt: serverTimestamp(),
         isLocked: false,
         totalMarketSize,
+        teamCount,
       });
+
+      const batch = writeBatch(db);
+      for (let i = 1; i <= teamCount; i += 1) {
+        const teamRef = doc(collection(db, 'teams'));
+        batch.set(teamRef, {
+          name: `Team ${i}`,
+          sessionId: sessionRef.id,
+          members: [],
+          viewers: [],
+          createdAt: serverTimestamp(),
+        });
+      }
+      await batch.commit();
+
       setNewSessionName('');
       setTotalMarketSize(6000000);
+      setTeamCount(5);
     } catch (error) {
       console.error('Error creating session:', error);
     } finally {
@@ -161,6 +178,19 @@ export default function InstructorDashboard({ user }: { user: UserProfile }) {
                   />
                   <p className="text-[10px] text-slate-500 mt-1 italic">Default: 6,000,000 units (60 lakh). This scales all volume calculations.</p>
                 </div>
+                <div>
+                  <label className="block text-sm font-medium text-slate-700 mb-1">Number of Teams</label>
+                  <select
+                    required
+                    value={teamCount}
+                    onChange={(e) => setTeamCount(parseInt(e.target.value, 10))}
+                    className="w-full rounded-lg border border-slate-200 px-4 py-2 focus:border-blue-500 focus:outline-none focus:ring-1 focus:ring-blue-500"
+                  >
+                    {Array.from({ length: 12 }, (_, i) => i + 1).map(count => (
+                      <option key={count} value={count}>{count} Teams</option>
+                    ))}
+                  </select>
+                </div>
                 <button
                   type="submit"
                   disabled={isCreating}
@@ -207,6 +237,10 @@ export default function InstructorDashboard({ user }: { user: UserProfile }) {
                           <span className="flex items-center gap-1">
                             <Settings className="h-4 w-4" />
                             Round: {session.currentRound}/5
+                          </span>
+                          <span className="flex items-center gap-1">
+                            <Users className="h-4 w-4" />
+                            Teams: {session.teamCount || 'Custom'}
                           </span>
                         </div>
                       </div>

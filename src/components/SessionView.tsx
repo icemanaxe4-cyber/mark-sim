@@ -205,7 +205,7 @@ export default function SessionView({ user }: { user: UserProfile }) {
         <div className="grid grid-cols-1 lg:grid-cols-12 gap-8 mt-8">
           {/* Main Content Area */}
           <div className="lg:col-span-8 space-y-8">
-            {session.currentRound === 1 && !isInstructor && !hasSubmitted && !session.isAnalysisPhase && !isViewer && (
+            {session.currentRound === 1 && !isInstructor && !hasSubmitted && !session.isAnalysisPhase && (
               <CompetitionBenchmark totalMarketSize={session.totalMarketSize} />
             )}
 
@@ -367,7 +367,7 @@ function ViewerDecisionPanel({ session, team, decisions }: { session: Session; t
 
   const isSubmitted = writerDecision?.submittedAt != null;
 
-  const Field = ({ label, value }: { label: string; value: React.ReactNode }) => (
+  const Field: React.FC<{ label: string; value: React.ReactNode }> = ({ label, value }) => (
     <div className="flex flex-col gap-0.5">
       <span className="text-xs font-semibold text-slate-400 uppercase tracking-wide">{label}</span>
       <span className="text-sm font-semibold text-slate-800 bg-slate-50 border border-slate-200 rounded-lg px-3 py-2">{value}</span>
@@ -497,17 +497,36 @@ function DecisionForm({ session, team, decisions }: { session: Session, team: Te
     assumptions: '',
   });
   const [draftId, setDraftId] = useState<string | null>(null);
+  // Track whether we've successfully loaded saved data for this round.
+  // Prevents the effect from overwriting user edits once data is loaded.
+  const hasLoadedRef = React.useRef(false);
+  const lastLoadedRoundRef = React.useRef<number | null>(null);
 
   const segTotal = Object.values(formData.segmentAllocation || {}).reduce<number>((a, b) => a + (b as number), 0);
   const distTotal = Object.values(formData.distributionChannel || {}).reduce<number>((a, b) => a + (b as number), 0);
   const promTotal = Object.values(formData.promotionAllocation || {}).reduce<number>((a, b) => a + (b as number), 0);
   const sfTotal = (formData.salesForceCount || 0) * (formData.salesForceSalary || 0);
 
-  // Load existing draft or previous round data
+  // Load existing draft or previous round data.
+  // Runs whenever decisions updates (so it works after a page refresh/resume where
+  // Firestore data arrives asynchronously) but only populates the form once per round
+  // to avoid overwriting live user edits.
   useEffect(() => {
-    const draft = decisions.find(d => d.teamId === team.id && d.round === session.currentRound && !d.submittedAt);
+    const currentRound = session.currentRound;
+
+    // Reset the guard when the round changes
+    if (lastLoadedRoundRef.current !== currentRound) {
+      hasLoadedRef.current = false;
+      lastLoadedRoundRef.current = currentRound;
+    }
+
+    // Skip if we already loaded saved data for this round
+    if (hasLoadedRef.current) return;
+
+    const draft = decisions.find(d => d.teamId === team.id && d.round === currentRound && !d.submittedAt);
 
     if (draft) {
+      hasLoadedRef.current = true;
       setDraftId(draft.id!);
       setFormData({
         segmentAllocation: draft.segmentAllocation,
@@ -526,10 +545,11 @@ function DecisionForm({ session, team, decisions }: { session: Session, team: Te
     } else {
       // If no draft, load previous round data
       const latestDecision = decisions
-        .filter(d => d.teamId === team.id && d.round < session.currentRound)
+        .filter(d => d.teamId === team.id && d.round < currentRound)
         .sort((a, b) => b.round - a.round)[0];
 
       if (latestDecision) {
+        hasLoadedRef.current = true;
         setFormData({
           segmentAllocation: latestDecision.segmentAllocation,
           positioning: latestDecision.positioning,
@@ -545,8 +565,10 @@ function DecisionForm({ session, team, decisions }: { session: Session, team: Te
           assumptions: latestDecision.assumptions || '',
         });
       }
+      // If decisions is still empty (Firestore loading), hasLoadedRef stays false
+      // so we retry on the next render when decisions arrives.
     }
-  }, [session.currentRound, team.id]); // Load once per round or when draft found
+  }, [decisions, session.currentRound, team.id]);
 
   // Auto-save logic
   useEffect(() => {
@@ -612,16 +634,28 @@ function DecisionForm({ session, team, decisions }: { session: Session, team: Te
       }
     }
 
+    if (!window.confirm('Are you sure you want to submit your decisions?')) {
+      return;
+    }
+
+    const lockedCapacity = (session.isCapacityLocked && session.currentRound > 2)
+      ? (decisions.find(d => d.teamId === team.id && d.round === 2 && d.submittedAt)?.productionCapacityChoice ?? null)
+      : null;
+    const submissionData = {
+      ...formData,
+      productionCapacityChoice: lockedCapacity || formData.productionCapacityChoice,
+    };
+
     setLoading(true);
     try {
       if (draftId) {
         await updateDoc(doc(db, 'decisions', draftId), {
-          ...formData,
+          ...submissionData,
           submittedAt: serverTimestamp(),
         });
       } else {
         await addDoc(collection(db, 'decisions'), {
-          ...formData,
+          ...submissionData,
           teamId: team.id,
           sessionId: session.id,
           round: session.currentRound,

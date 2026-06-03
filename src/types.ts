@@ -19,6 +19,7 @@ export interface Session {
   isLocked: boolean;
   isCapacityLocked?: boolean;
   totalMarketSize?: number;
+  teamCount?: number;
 }
 
 export interface Team {

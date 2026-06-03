@@ -3,8 +3,11 @@ import { getAuth } from 'firebase/auth';
 import { getFirestore } from 'firebase/firestore';
 import firebaseConfig from '../firebase-applet-config.json';
 
+const configWithDatabaseId = firebaseConfig as typeof firebaseConfig & { firestoreDatabaseId?: string };
 const app = initializeApp(firebaseConfig);
-export const db = getFirestore(app, firebaseConfig.firestoreDatabaseId);
+export const db = configWithDatabaseId.firestoreDatabaseId
+  ? getFirestore(app, configWithDatabaseId.firestoreDatabaseId)
+  : getFirestore(app);
 export const auth = getAuth(app);
 
 export enum OperationType {
