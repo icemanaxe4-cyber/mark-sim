@@ -2009,40 +2009,80 @@ function InstructorOverview({ session, teams, decisions, results }: { session: S
           </div>
         </div>
 
-        {activeTab === 'progress' && (
-          <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
-            {teams.map(team => {
-              const decision = currentRoundDecisions.find(d => d.teamId === team.id && d.submittedAt);
-              const draft = currentRoundDecisions.find(d => d.teamId === team.id && !d.submittedAt);
-              const hasSubmitted = !!decision;
-              const hasDraft = !!draft;
-              return (
-                <div
-                  key={team.id}
-                  className={cn(
-                    "p-4 rounded-xl border flex items-center justify-between cursor-pointer transition-all",
-                    hasSubmitted ? "bg-green-50 border-green-200 hover:bg-green-100" :
-                      hasDraft ? "bg-amber-50 border-amber-200 hover:bg-amber-100" :
-                        "bg-slate-50 border-slate-200 hover:bg-slate-100",
-                    selectedTeamId === team.id && "ring-2 ring-blue-500"
-                  )}
-                  onClick={() => setSelectedTeamId(team.id)}
-                >
-                  <div>
-                    <p className="font-bold text-slate-700 text-sm">{team.name}</p>
-                    <p className="text-[10px] text-slate-500 uppercase font-bold">
-                      {hasSubmitted ? 'Submitted' : hasDraft ? 'Draft Saved' : 'Waiting'}
-                    </p>
+        {activeTab === 'progress' && (() => {
+          const joinedCount = teams.filter(t => (t.members || []).length > 0).length;
+          const waitingCount = teams.length - joinedCount;
+          return (
+            <>
+              {/* Pre-game join summary banner — only shown while session is waiting */}
+              {session.status === 'waiting' && (
+                <div className="flex items-center gap-4 mb-4 p-3 bg-slate-50 rounded-xl border border-slate-200">
+                  <div className="flex items-center gap-2">
+                    <span className="w-2.5 h-2.5 rounded-full bg-blue-500 inline-block" />
+                    <span className="text-sm font-bold text-blue-700">{joinedCount} Joined</span>
                   </div>
-                  <div className={cn(
-                    "w-2 h-2 rounded-full",
-                    hasSubmitted ? "bg-green-500" : hasDraft ? "bg-amber-500" : "bg-slate-300"
-                  )} />
+                  <div className="flex items-center gap-2">
+                    <span className="w-2.5 h-2.5 rounded-full bg-slate-300 inline-block" />
+                    <span className="text-sm font-bold text-slate-500">{waitingCount} Waiting</span>
+                  </div>
+                  <span className="ml-auto text-[10px] font-bold text-slate-400 uppercase tracking-wide animate-pulse">● Live</span>
                 </div>
-              );
-            })}
-          </div>
-        )}
+              )}
+
+              <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
+                {teams.map(team => {
+                  const decision = currentRoundDecisions.find(d => d.teamId === team.id && d.submittedAt);
+                  const draft = currentRoundDecisions.find(d => d.teamId === team.id && !d.submittedAt);
+                  const hasSubmitted = !!decision;
+                  const hasDraft = !!draft;
+                  const memberCount = (team.members || []).length;
+                  const viewerCount = (team.viewers || []).length;
+                  const hasJoined = memberCount > 0 || viewerCount > 0;
+                  const isWaiting = session.status === 'waiting';
+
+                  return (
+                    <div
+                      key={team.id}
+                      className={cn(
+                        "p-4 rounded-xl border flex items-center justify-between cursor-pointer transition-all",
+                        isWaiting
+                          ? hasJoined
+                            ? "bg-blue-50 border-blue-200 hover:bg-blue-100"
+                            : "bg-slate-50 border-slate-200 hover:bg-slate-100"
+                          : hasSubmitted
+                            ? "bg-green-50 border-green-200 hover:bg-green-100"
+                            : hasDraft
+                              ? "bg-amber-50 border-amber-200 hover:bg-amber-100"
+                              : "bg-slate-50 border-slate-200 hover:bg-slate-100",
+                        selectedTeamId === team.id && "ring-2 ring-blue-500"
+                      )}
+                      onClick={() => setSelectedTeamId(team.id)}
+                    >
+                      <div>
+                        <p className="font-bold text-slate-700 text-sm">{team.name}</p>
+                        {isWaiting ? (
+                          <p className={cn("text-[10px] uppercase font-bold", hasJoined ? "text-blue-600" : "text-slate-400")}>
+                            {hasJoined ? 'Joined' : 'Not joined yet'}
+                          </p>
+                        ) : (
+                          <p className="text-[10px] text-slate-500 uppercase font-bold">
+                            {hasSubmitted ? 'Submitted' : hasDraft ? 'Draft Saved' : hasJoined ? `Joined (${memberCount})` : 'Waiting'}
+                          </p>
+                        )}
+                      </div>
+                      <div className={cn(
+                        "w-2.5 h-2.5 rounded-full",
+                        isWaiting
+                          ? hasJoined ? "bg-blue-500" : "bg-slate-300"
+                          : hasSubmitted ? "bg-green-500" : hasDraft ? "bg-amber-500" : "bg-slate-300"
+                      )} />
+                    </div>
+                  );
+                })}
+              </div>
+            </>
+          );
+        })()}
 
         {activeTab === 'leaderboard' && (
           <div className="overflow-x-auto">
