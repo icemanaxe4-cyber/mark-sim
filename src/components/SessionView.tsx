@@ -457,14 +457,6 @@ function ViewerDecisionPanel({ session, team, decisions }: { session: Session; t
             </div>
           )}
 
-          {/* Overall Strategy */}
-          <div className="space-y-1">
-            <span className="text-xs font-semibold text-slate-400 uppercase tracking-wide">Overall Strategy</span>
-            <div className="bg-slate-50 border border-slate-200 rounded-lg px-4 py-3 text-sm text-slate-800 whitespace-pre-wrap min-h-[3rem]">
-              {writerDecision.overallStrategy || <span className="italic text-slate-400">Not entered yet</span>}
-            </div>
-          </div>
-
           {/* Assumptions (Round 1 only) */}
           {round === 1 && (
             <div className="space-y-1">
